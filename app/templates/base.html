@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Course Scheduler{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <a class="brand" href="{{ url_for('auth.home') }}">Course Scheduler</a>
+    <nav>
+      {% if g.user %}
+        {% if g.user.is_coordinator %}
+          <a href="{{ url_for('coordinator.dashboard') }}">Dashboard</a>
+          <a href="{{ url_for('coordinator.requests') }}">Change requests</a>
+        {% else %}
+          <a href="{{ url_for('instructor.dashboard') }}">My courses</a>
+          <a href="{{ url_for('instructor.schedule') }}">Timetable</a>
+        {% endif %}
+        <span class="muted">{{ g.user.display_name }} · {{ g.user.role }}</span>
+        <form method="post" action="{{ url_for('auth.logout') }}" class="inline">
+          <button type="submit" class="link">Log out</button>
+        </form>
+      {% else %}
+        <a href="{{ url_for('auth.login') }}">Log in</a>
+        <a href="{{ url_for('auth.register') }}">Register</a>
+      {% endif %}
+    </nav>
+  </header>
+  <main>
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

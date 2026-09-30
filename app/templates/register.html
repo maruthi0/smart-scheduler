@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Register · Course Scheduler{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>Create an account</h1>
+  <form method="post">
+    <label>Full name <input name="full_name" value="{{ form.get('full_name', '') }}" placeholder="Dr. Jane Smith"></label>
+    <label>Username <input name="username" required minlength="3" value="{{ form.get('username', '') }}"></label>
+    <label>Password <input name="password" type="password" required minlength="6"></label>
+    <label>Role
+      <select name="role" id="role">
+        {% for r in roles %}<option value="{{ r }}" {% if form.get('role') == r %}selected{% endif %}>{{ r|title }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Coordinator access code <small class="muted">(coordinators only)</small>
+      <input name="coordinator_code" type="password">
+    </label>
+    <button type="submit" class="button">Register</button>
+  </form>
+  <p>Already registered? <a href="{{ url_for('auth.login') }}">Log in</a></p>
+</section>
+{% endblock %}

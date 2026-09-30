@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Coordinator dashboard · Course Scheduler{% endblock %}
+{% block content %}
+{% if pending %}
+  <div class="flash info"><a href="{{ url_for('coordinator.requests') }}">{{ pending }} change request{{ 's' if pending != 1 }} waiting for review</a></div>
+{% endif %}
+
+<section class="card">
+  <h1>Generate a semester schedule</h1>
+  <form method="post" action="{{ url_for('coordinator.generate') }}" class="row-form">
+    <label>Semester <input name="semester" required placeholder="Fall 2026"></label>
+    <label>First day <input type="date" name="start_date" required value="{{ today.isoformat() }}"></label>
+    <label>Last day <input type="date" name="end_date" required></label>
+    <button type="submit" class="button">Generate</button>
+  </form>
+  {% if schedules %}
+    <table>
+      <thead><tr><th>Semester</th><th>Dates</th><th>Status</th><th>Unmet preferences</th><th>Created</th></tr></thead>
+      <tbody>
+      {% for s in schedules %}
+        <tr>
+          <td><a href="{{ url_for('coordinator.view_schedule', schedule_id=s.id) }}">{{ s.semester }}</a></td>
+          <td>{{ s.start_date }} → {{ s.end_date }}</td>
+          <td><span class="badge {{ s.status }}">{{ s.status }}</span></td>
+          <td>{{ s.soft_penalty }}</td>
+          <td>{{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+
+<div class="grid-2">
+  <section class="card">
+    <h2>Rooms</h2>
+    <table>
+      <thead><tr><th>Name</th><th>Seats</th><th>Type</th><th></th></tr></thead>
+      <tbody>
+      {% for r in rooms %}
+        <tr>
+          <td>{{ r.name }}</td><td>{{ r.capacity }}</td><td>{{ r.room_type.replace('_', ' ') }}</td>
+          <td><form method="post" action="{{ url_for('coordinator.delete_room', room_id=r.id) }}" class="inline">
+            <button class="link danger" onclick="return confirm('Delete {{ r.name }}?')">Delete</button></form></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="muted">No rooms yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <form method="post" action="{{ url_for('coordinator.add_room') }}" class="row-form">
+      <label>Name <input name="name" required></label>
+      <label>Seats <input name="capacity" type="number" min="1" required></label>
+      <label>Type <select name="room_type">{% for t in room_types %}<option value="{{ t }}">{{ t.replace('_', ' ') }}</option>{% endfor %}</select></label>
+      <button type="submit" class="button">Add room</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>No-overlap rules <small class="muted">(hard constraint)</small></h2>
+    <p class="muted">Courses that must never be scheduled at the same time, for example core courses taken by the same cohort.</p>
+    <ul class="plain">
+      {% for rule in rules %}
+        <li>{{ rule.course_a.code }} ✕ {{ rule.course_b.code }}
+          <form method="post" action="{{ url_for('coordinator.delete_rule', rule_id=rule.id) }}" class="inline">
+            <button class="link danger">Remove</button></form></li>
+      {% else %}
+        <li class="muted">No rules yet.</li>
+      {% endfor %}
+    </ul>
+    {% if courses|length > 1 %}
+    <form method="post" action="{{ url_for('coordinator.add_rule') }}" class="row-form">
+      <label>Course <select name="course_a_id">{% for c in courses %}<option value="{{ c.id }}">{{ c.code }}</option>{% endfor %}</select></label>
+      <label>must not overlap <select name="course_b_id">{% for c in courses %}<option value="{{ c.id }}" {% if loop.index == 2 %}selected{% endif %}>{{ c.code }}</option>{% endfor %}</select></label>
+      <button type="submit" class="button">Add rule</button>
+    </form>
+    {% endif %}
+  </section>
+</div>
+
+<section class="card">
+  <h2>Courses</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Code</th><th>Title</th><th>Enrolled</th><th>Lecture / lab hrs</th><th>Instructor</th><th>Preferences</th><th></th></tr></thead>
+    <tbody>
+    {% for c in courses %}
+      <tr>
+        <td><strong>{{ c.code }}</strong></td>
+        <td>{{ c.title }}</td>
+        <td>{{ c.enrollment }}</td>
+        <td>{{ c.effective_lecture_hours }} / {{ c.effective_lab_hours }}</td>
+        <td>
+          <form method="post" action="{{ url_for('coordinator.assign_instructor', course_id=c.id) }}" class="inline">
+            <select name="instructor_id" onchange="this.form.submit()">
+              <option value="">— unassigned —</option>
+              {% for i in instructors %}<option value="{{ i.id }}" {% if c.instructor_id == i.id %}selected{% endif %}>{{ i.display_name }}</option>{% endfor %}
+            </select>
+            <noscript><button class="link">Save</button></noscript>
+          </form>
+        </td>
+        <td>{% if c.preference %}
+              <span class="badge published" title="{{ c.preference.midterms }} midterm(s), final exam: {{ 'yes' if c.preference.final_exam else 'no' }}">submitted</span>
+            {% else %}<span class="badge draft">none</span>{% endif %}</td>
+        <td><form method="post" action="{{ url_for('coordinator.delete_course', course_id=c.id) }}" class="inline">
+          <button class="link danger" onclick="return confirm('Delete {{ c.code }}?')">Delete</button></form></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="muted">No courses yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <form method="post" action="{{ url_for('coordinator.add_course') }}" class="row-form">
+    <label>Code <input name="code" required size="8"></label>
+    <label>Title <input name="title" required></label>
+    <label>Enrolled <input name="enrollment" type="number" min="1" required></label>
+    <label>Lecture hrs <input name="lecture_hours" type="number" min="0" max="10" value="3"></label>
+    <label>Lab hrs <input name="lab_hours" type="number" min="0" max="10" value="0"></label>
+    <label>Instructor <select name="instructor_id"><option value="">—</option>{% for i in instructors %}<option value="{{ i.id }}">{{ i.display_name }}</option>{% endfor %}</select></label>
+    <button type="submit" class="button">Add course</button>
+  </form>
+</section>
+{% endblock %}

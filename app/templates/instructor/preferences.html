@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ course.code }} preferences · Course Scheduler{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>{{ course.code }} preferences</h1>
+  <p class="muted">{{ course.title }} · {{ course.enrollment }} students. Hours per week are used as given. Day, time and venue are preferences: the scheduler tries to meet them, but room availability comes first.</p>
+  <form method="post">
+    <div class="row-form">
+      <label>Lecture hours / week <input name="lecture_hours" type="number" min="0" max="10" required value="{{ pref.lecture_hours if pref else course.lecture_hours }}"></label>
+      <label>Lab hours / week <input name="lab_hours" type="number" min="0" max="10" required value="{{ pref.lab_hours if pref else course.lab_hours }}"></label>
+    </div>
+    <div class="row-form">
+      <label>Midterms <input name="midterms" type="number" min="0" max="5" value="{{ pref.midterms if pref else 1 }}"></label>
+      <label class="check"><input type="checkbox" name="final_exam" {% if not pref or pref.final_exam %}checked{% endif %}> Final exam</label>
+    </div>
+    <label>Preferred venue
+      <select name="venue_type">
+        <option value="">No preference</option>
+        {% for v in venues %}<option value="{{ v }}" {% if pref and pref.venue_type == v %}selected{% endif %}>{{ v.replace('_', ' ')|title }}</option>{% endfor %}
+      </select>
+    </label>
+    <fieldset>
+      <legend>Preferred days</legend>
+      {% for d in days %}
+        <label class="check"><input type="checkbox" name="preferred_days" value="{{ loop.index0 }}" {% if pref and loop.index0 in pref.days %}checked{% endif %}> {{ d }}</label>
+      {% endfor %}
+    </fieldset>
+    <label>Preferred time of day
+      <select name="preferred_period">
+        {% for p in periods %}<option value="{{ p }}" {% if pref and pref.preferred_period == p %}selected{% endif %}>{{ p|title }}</option>{% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="button">Save preferences</button>
+    <a href="{{ url_for('instructor.dashboard') }}">Cancel</a>
+  </form>
+</section>
+{% endblock %}

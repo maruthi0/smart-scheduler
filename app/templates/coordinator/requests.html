@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Change requests · Course Scheduler{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Change requests from instructors</h1>
+  {% for r in requests %}
+    <div class="request {{ r.status }}">
+      <div class="row">
+        <div>
+          <strong>{{ r.instructor.display_name }}</strong>
+          {% if r.session %} about <strong>{{ r.session.course.code }} {{ r.session.kind }}</strong>
+            ({{ days[r.session.day] }} {{ '%02d:00' % r.session.hour }}, {{ r.session.room.name }}){% endif %}
+          · <a href="{{ url_for('coordinator.view_schedule', schedule_id=r.schedule_id) }}">{{ r.schedule.semester }}</a>
+          <br><small class="muted">{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+        </div>
+        <span class="badge {{ r.status }}">{{ r.status }}</span>
+      </div>
+      <p>{{ r.message }}</p>
+      {% if r.status == 'pending' %}
+        <form method="post" action="{{ url_for('coordinator.respond', request_id=r.id) }}" class="row-form">
+          <label>Reply to instructor <input name="response" placeholder="Optional"></label>
+          <button name="decision" value="accept" class="button">Accept</button>
+          <button name="decision" value="reject" class="button secondary">Reject</button>
+        </form>
+      {% elif r.response %}
+        <p class="muted">Reply: {{ r.response }}</p>
+      {% endif %}
+    </div>
+  {% else %}
+    <p class="muted">No change requests yet.</p>
+  {% endfor %}
+</section>
+{% endblock %}
