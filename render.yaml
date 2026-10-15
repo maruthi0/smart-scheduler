@@ -1,0 +1,30 @@
+# Render Blueprint: creates the web app and its PostgreSQL database.
+# Render dashboard -> New -> Blueprint -> pick this repo.
+services:
+  - type: web
+    name: smart-scheduler
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn run:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.12
+      - key: SECRET_KEY
+        generateValue: true          # Render makes a random value
+      - key: COORDINATOR_CODE
+        sync: false                  # Render asks you for it on first deploy
+      - key: DATABASE_URL
+        fromDatabase:
+          name: smart-scheduler-db
+          property: connectionString
+      - key: SESSION_COOKIE_SECURE
+        value: "1"                   # Render serves the app over HTTPS
+      - key: FLASK_DEBUG
+        value: "0"
+
+databases:
+  - name: smart-scheduler-db
+    plan: free
+    databaseName: scheduler
+    user: scheduler
