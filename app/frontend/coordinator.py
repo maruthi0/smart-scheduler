@@ -3,12 +3,12 @@ from datetime import date
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
-from . import services
+from ..backend import services
 from .auth import require_role
-from .models import (
+from ..backend.models import (
     COORDINATOR, PENDING, ROOM_TYPES, ChangeRequest, Course, NoOverlap, Room, Schedule,
 )
-from .services import DAYS, HOURS, ConflictError, SchedulingError, ValidationError
+from ..backend.services import DAYS, HOURS, ConflictError, SchedulingError, ValidationError
 
 bp = Blueprint("coordinator", __name__, url_prefix="/coordinator")
 

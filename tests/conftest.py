@@ -1,16 +1,21 @@
+import os
+
 import pytest
 
-from app import create_app, services
-from app.models import COORDINATOR, INSTRUCTOR, db
+from app import create_app
+from app.backend import services
+from app.backend.models import COORDINATOR, INSTRUCTOR, db
 
 
 @pytest.fixture
 def app():
     app = create_app({
         "TESTING": True,
-        "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
+        # Set TEST_DATABASE_URL to run the suite against PostgreSQL instead.
+        "SQLALCHEMY_DATABASE_URI": os.environ.get("TEST_DATABASE_URL", "sqlite:///:memory:"),
         "SECRET_KEY": "test",
         "COORDINATOR_CODE": "letmein",
+        "WTF_CSRF_ENABLED": False,  # CSRF itself is covered in test_security.py
     })
     with app.app_context():
         yield app

@@ -6,3 +6,8 @@ instance/
 .pytest_cache/
 .coverage
 htmlcov/
+project_Docs/
+.env
+.env.*
+!.env.example
+graphify-out/

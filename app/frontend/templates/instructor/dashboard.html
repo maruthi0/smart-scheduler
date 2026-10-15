@@ -1,14 +1,27 @@
 {% extends "base.html" %}
 {% block title %}My courses · Course Scheduler{% endblock %}
+{% block hero %}
+<div class="page-head">
+  <div>
+    <h1>My courses</h1>
+    <p class="muted">Submit your teaching preferences before the coordinators generate the schedule.</p>
+  </div>
+  <dl class="stats">
+    <div><dt>Courses</dt><dd>{{ courses|length }}</dd></div>
+    <div><dt>Sessions a week</dt><dd>{{ sessions|length }}</dd></div>
+    <div><dt>Open requests</dt><dd>{{ my_requests|selectattr('status', 'equalto', 'pending')|list|length }}</dd></div>
+  </dl>
+</div>
+{% endblock %}
 {% block content %}
 <section class="card">
-  <h1>My courses</h1>
+  <div class="table-wrap">
   <table>
-    <thead><tr><th>Code</th><th>Title</th><th>Enrolled</th><th>Preferences</th></tr></thead>
+    <thead><tr><th>Code</th><th>Title</th><th class="num">Enrolled</th><th>Preferences</th></tr></thead>
     <tbody>
     {% for c in courses %}
       <tr>
-        <td><strong>{{ c.code }}</strong></td><td>{{ c.title }}</td><td>{{ c.enrollment }}</td>
+        <td class="mono"><strong>{{ c.code }}</strong></td><td>{{ c.title }}</td><td class="num">{{ c.enrollment }}</td>
         <td><a href="{{ url_for('instructor.preferences', course_id=c.id) }}">{{ 'Edit' if c.preference else 'Submit' }} preferences</a></td>
       </tr>
     {% else %}
@@ -16,6 +29,7 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
 </section>
 
 <section class="card">
@@ -27,21 +41,21 @@
     <p class="muted">Download the .ics file and import it into Google Calendar (Settings → Import), Outlook or Apple Calendar.</p>
     <ul class="plain">
       {% for s in sessions %}
-        <li><strong>{{ days[s.day] }} {{ '%02d:00' % s.hour }}</strong> — {{ s.course.code }} {{ s.kind }} in {{ s.room.name }}</li>
+        <li><span><strong class="mono">{{ days[s.day] }} {{ '%02d:00' % s.hour }}</strong>&ensp;{{ s.course.code }} {{ s.kind }}</span><span class="muted">{{ s.room.name }}</span></li>
       {% else %}
         <li class="muted">You have no sessions in this schedule.</li>
       {% endfor %}
     </ul>
     <h3>Suggest a change</h3>
     <p class="muted">Only coordinators can change the schedule. Your request is sent to them for review.</p>
-    <form method="post" action="{{ url_for('instructor.create_request') }}">
+    <form method="post" action="{{ url_for('instructor.create_request') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label>Session
         <select name="session_id">
           <option value="">General comment</option>
           {% for s in sessions %}<option value="{{ s.id }}">{{ s.course.code }} {{ s.kind }} — {{ days[s.day] }} {{ '%02d:00' % s.hour }}</option>{% endfor %}
         </select>
       </label>
-      <label>Message <textarea name="message" rows="3" required maxlength="1000" placeholder="e.g. Could CS5551 move from Friday to Thursday? I have a conference every Friday."></textarea></label>
+      <label>Message <textarea name="message" rows="3" required maxlength="1000" placeholder="e.g. Could my Friday lecture go to Thursday? I teach off-campus on Fridays."></textarea></label>
       <button type="submit" class="button">Send request</button>
     </form>
   {% else %}

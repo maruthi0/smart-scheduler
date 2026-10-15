@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "_timetable.html" import timetable %}
+{% block title %}Timetable · Course Scheduler{% endblock %}
+{% block hero %}
+<div class="page-head">
+  <div>
+  {% if schedule %}
+    <h1>{{ schedule.semester }} timetable</h1>
+    <p>Your sessions are highlighted. This view is read-only. To request a change, use <a href="{{ url_for('instructor.dashboard') }}">My courses</a>.</p>
+  {% else %}
+    <h1>Timetable</h1>
+    <p>The coordinators have not published a schedule yet.</p>
+  {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block content %}
+<section class="card">
+  {% if schedule %}
+    {{ timetable(grid, days, hours, mine=g.user.id) }}
+  {% else %}
+    <p class="muted">Once a schedule is published, your weekly sessions appear here.</p>
+  {% endif %}
+</section>
+{% endblock %}

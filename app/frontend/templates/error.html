@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · Course Scheduler{% endblock %}
+{% block hero %}
+<div class="page-head">
+  <div>
+    <p>Error {{ code }}</p>
+    <h1>{{ title }}</h1>
+  </div>
+</div>
+{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <p>{{ detail }}</p>
+  <div class="error-actions"><a class="button" href="{{ url_for('auth.home') }}">Go to my home page <span class="arrow" aria-hidden="true">→</span></a></div>
+</section>
+{% endblock %}

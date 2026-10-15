@@ -52,6 +52,7 @@ Priority: **Must** = must-have (required for the primitive functions); **May** =
 | 13 | Notifications | As an **instructor**, I want to be notified when a schedule is published or my request is answered, so that I don't have to keep checking. | May | 6 | | toDo | |
 | 14 | Exam scheduling | As a **coordinator**, I want midterm and final exam slots generated from instructors' exam preferences, so that exams don't clash. | May | 12 | | toDo | |
 | 15 | Instructor unavailability | As an **instructor**, I want to mark times I am unavailable as a hard constraint, so that I am never scheduled then. | May | 5 | | toDo | |
+| 16 | Secure configuration | As a **coordinator**, I want the app's secrets kept out of the source code and every form protected against forged requests, so that nobody can impersonate me or change schedules without my action. | Must | 4 | | completed | TBD |
 
 ---
 
@@ -98,6 +99,9 @@ Priority: **Must** = must-have (required for the primitive functions); **May** =
 | **11 Calendar export** | 11.1 | **Download .ics.** *Given* a published schedule, *when* I click "Add to my calendar", *then* I download a `text/calendar` file containing only my sessions as weekly events repeating until the semester's last day. | completed | TBD |
 | | 11.2 | **Correct first date.** *Given* the semester starts on Monday 24 Aug 2026 and my session is on Wednesdays at 10:00, *then* the first event is on 26 Aug 2026 at 10:00. | completed | TBD |
 | | 11.3 | **Import into Google Calendar.** *Given* the downloaded file, *when* I import it in Google Calendar (Settings → Import & export), *then* the classes appear on the correct weekdays and times. | completed (manual) | TBD |
+| **16 Secure configuration** | 16.1 | **Secrets from the environment.** *Given* `SECRET_KEY` or `COORDINATOR_CODE` is not set, *when* the app starts, *then* it refuses to start and names the missing setting; *given* they are set in `.env`, *then* the app uses those values. | completed | TBD |
+| | 16.2 | **CSRF protection.** *Given* any form, *when* it is submitted without a valid CSRF token, *then* the request is rejected with HTTP 400 and nothing changes; *when* the token is present, *then* the form works as before. | completed | TBD |
+| | 16.3 | **Safe defaults.** *Given* the default settings, *then* the session cookie is `SameSite=Lax`, it is `Secure` when `SESSION_COOKIE_SECURE=1`, and debug mode is on only when `FLASK_DEBUG=1`. | completed | TBD |
 
 ---
 
@@ -120,6 +124,7 @@ Priority: **Must** = must-have (required for the primitive functions); **May** =
 | 9 | 9.1–9.3 | `services`, `coordinator`, `instructor` | `publish_schedule`, `delete_schedule`, `published_schedule`, `instructor.schedule`, `_timetable.html` macro | TBD | completed |
 | 10 | 10.1–10.3 | `services`, `instructor`, `coordinator` | `create_change_request`, `respond_change_request`, `instructor.create_request`, `coordinator.respond` | TBD | completed |
 | 11 | 11.1–11.3 | `services`, `instructor` | `instructor_calendar`, `instructor.calendar` | TBD | completed |
+| 16 | 16.1–16.3 | `config`, `app` (factory), `frontend.auth`, templates | `load_config`, `create_app` (`CSRFProtect`), `auth.register` (`hmac.compare_digest`), `csrf_token` field in every form | TBD | completed |
 
 ### Summary of automated test code (corresponding to acceptance criteria)
 
@@ -160,6 +165,9 @@ Priority: **Must** = must-have (required for the primitive functions); **May** =
 | 10 | 10.3 | test_services.py, test_routes.py | `test_change_request_flow`, `test_coordinator_responds_to_request` | Accept/reject with reply; second answer refused; "1 change request waiting" | pass | TBD |
 | 11 | 11.1 | test_services.py, test_routes.py | `test_instructor_calendar`, `test_instructor_downloads_calendar` | 3 own sessions → 3 VEVENTs, weekly RRULE, other's course absent | pass | TBD |
 | 11 | 11.2 | test_services.py | `test_calendar_first_occurrence_on_correct_weekday` | Start Mon 24 Aug, Wed 10:00 → `DTSTART:20260826T100000` | pass | TBD |
+| 16 | 16.1 | test_security.py | `test_app_refuses_to_start_without_required_secret` (2 cases), `test_settings_are_read_from_environment`, `test_demo_accounts_use_password_from_config` | Missing `SECRET_KEY`/`COORDINATOR_CODE` → `RuntimeError`; values from the environment → app config | pass | TBD |
+| 16 | 16.2 | test_security.py | `test_post_without_csrf_token_is_rejected`, `test_post_with_csrf_token_is_accepted` | Login POST without token → 400; with token → 302 | pass | TBD |
+| 16 | 16.3 | test_security.py | `test_settings_are_read_from_environment` | `SESSION_COOKIE_SECURE=1` → Secure cookie; SameSite is Lax | pass | TBD |
 
 ### Summary of manual test cases
 
@@ -178,7 +186,7 @@ Priority: **Must** = must-have (required for the primitive functions); **May** =
 | 1 | `seed` command on a non-empty DB | Non-zero exit, data untouched | test_seed.py | `test_seed_refuses_non_empty_database` | pass |
 | 2 | Any single session | Placed within 08:00–17:00 | test_scheduler.py | `test_slot_range` | pass |
 
-**Totals:** 90 automated tests, all passing. Statement coverage is 98% (`pytest --cov=app`). CI runs on every push via GitHub Actions (Python 3.11–3.13).
+**Totals:** 98 automated tests, all passing. Statement coverage is 98% (`pytest --cov=app`). CI runs on every push via GitHub Actions (Python 3.11–3.13 on SQLite, and on PostgreSQL 18, the production database).
 
 ---
 
@@ -188,20 +196,21 @@ Lines are non-blank lines. **Fill in who wrote or integrated each file.** Each m
 
 | Production or test? | Source code file | # lines | Developer names and contributions (%) |
 |---|---|---|---|
-| Production | app/scheduler.py (algorithm) | 207 | TBD |
-| Production | app/services.py (business logic) | 329 | TBD |
-| Production | app/models.py | 114 | TBD |
-| Production | app/coordinator.py | 128 | TBD |
-| Production | app/instructor.py | 68 | TBD |
-| Production | app/auth.py | 58 | TBD |
-| Production | app/\_\_init\_\_.py, app/seed.py | 82 | TBD |
-| Production | app/templates/ (10 files) | 420 | TBD |
-| Production | app/static/style.css | 60 | TBD |
+| Production (backend) | app/backend/scheduler.py (algorithm) | 207 | TBD |
+| Production (backend) | app/backend/services.py (business logic) | 329 | TBD |
+| Production (backend) | app/backend/models.py | 114 | TBD |
+| Production (frontend) | app/frontend/coordinator.py | 128 | TBD |
+| Production (frontend) | app/frontend/instructor.py | 68 | TBD |
+| Production (frontend) | app/frontend/auth.py, app/frontend/errors.py | 76 | TBD |
+| Production | app/\_\_init\_\_.py, app/config.py, app/backend/seed.py, package files | 120 | TBD |
+| Production (frontend) | app/frontend/templates/ (11 files) | 475 | TBD |
+| Production (frontend) | app/frontend/static/style.css | 205 | TBD |
 | Test | tests/test_scheduler.py | 143 | TBD |
 | Test | tests/test_services.py | 208 | TBD |
-| Test | tests/test_routes.py | 148 | TBD |
-| Test | tests/conftest.py, tests/test_seed.py | 64 | TBD |
-| | **Total** | **2,029** (1,466 production + 563 test) | |
+| Test | tests/test_routes.py | 156 | TBD |
+| Test | tests/test_security.py | 61 | TBD |
+| Test | tests/conftest.py, tests/test_seed.py | 68 | TBD |
+| | **Total** | **2,357** (1,721 production + 636 test) | |
 
 **AI assistance:** Parts of this code were generated with an AI assistant (Claude Code). As the course requires, screenshots of the prompts and outputs are included in Appendix A. The team's changes to the AI output are described there: `TBD`.
 

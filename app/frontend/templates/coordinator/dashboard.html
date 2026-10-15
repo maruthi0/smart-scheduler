@@ -1,46 +1,66 @@
 {% extends "base.html" %}
 {% block title %}Coordinator dashboard · Course Scheduler{% endblock %}
+{% block hero %}
+<div class="page-head">
+  <div>
+    <h1>Coordinator dashboard</h1>
+    <p class="muted">Rooms, courses and rules feed the schedule generator.</p>
+  </div>
+  <dl class="stats">
+    <div><dt>Rooms</dt><dd>{{ rooms|length }}</dd></div>
+    <div><dt>Courses</dt><dd>{{ courses|length }}</dd></div>
+    <div><dt>Schedules</dt><dd>{{ schedules|length }}</dd></div>
+    <div{% if pending %} class="attention"{% endif %}><dt>Requests waiting</dt><dd>{{ pending }}</dd></div>
+  </dl>
+</div>
+{% endblock %}
 {% block content %}
 {% if pending %}
   <div class="flash info"><a href="{{ url_for('coordinator.requests') }}">{{ pending }} change request{{ 's' if pending != 1 }} waiting for review</a></div>
 {% endif %}
 
 <section class="card">
-  <h1>Generate a semester schedule</h1>
-  <form method="post" action="{{ url_for('coordinator.generate') }}" class="row-form">
+  <h2>Generate a semester schedule</h2>
+  <form method="post" action="{{ url_for('coordinator.generate') }}" class="row-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Semester <input name="semester" required placeholder="Fall 2026"></label>
     <label>First day <input type="date" name="start_date" required value="{{ today.isoformat() }}"></label>
     <label>Last day <input type="date" name="end_date" required></label>
     <button type="submit" class="button">Generate</button>
   </form>
   {% if schedules %}
+    <h3>Schedules</h3>
+    <div class="table-wrap">
     <table>
-      <thead><tr><th>Semester</th><th>Dates</th><th>Status</th><th>Unmet preferences</th><th>Created</th></tr></thead>
+      <thead><tr><th>Semester</th><th>Dates</th><th>Status</th><th class="num">Unmet preferences</th><th>Created</th></tr></thead>
       <tbody>
       {% for s in schedules %}
         <tr>
           <td><a href="{{ url_for('coordinator.view_schedule', schedule_id=s.id) }}">{{ s.semester }}</a></td>
-          <td>{{ s.start_date }} → {{ s.end_date }}</td>
+          <td class="mono">{{ s.start_date }} → {{ s.end_date }}</td>
           <td><span class="badge {{ s.status }}">{{ s.status }}</span></td>
-          <td>{{ s.soft_penalty }}</td>
-          <td>{{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td class="num">{{ s.soft_penalty }}</td>
+          <td class="mono muted">{{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
         </tr>
       {% endfor %}
       </tbody>
     </table>
+    </div>
+  {% else %}
+    <p class="muted empty-note">No schedules yet. Add rooms and courses below, then generate the first one.</p>
   {% endif %}
 </section>
 
 <div class="grid-2">
   <section class="card">
     <h2>Rooms</h2>
+    <div class="table-wrap">
     <table>
-      <thead><tr><th>Name</th><th>Seats</th><th>Type</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th class="num">Seats</th><th>Type</th><th></th></tr></thead>
       <tbody>
       {% for r in rooms %}
         <tr>
-          <td>{{ r.name }}</td><td>{{ r.capacity }}</td><td>{{ r.room_type.replace('_', ' ') }}</td>
-          <td><form method="post" action="{{ url_for('coordinator.delete_room', room_id=r.id) }}" class="inline">
+          <td>{{ r.name }}</td><td class="num">{{ r.capacity }}</td><td>{{ r.room_type.replace('_', ' ') }}</td>
+          <td class="actions-cell"><form method="post" action="{{ url_for('coordinator.delete_room', room_id=r.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="link danger" onclick="return confirm('Delete {{ r.name }}?')">Delete</button></form></td>
         </tr>
       {% else %}
@@ -48,7 +68,8 @@
       {% endfor %}
       </tbody>
     </table>
-    <form method="post" action="{{ url_for('coordinator.add_room') }}" class="row-form">
+    </div>
+    <form method="post" action="{{ url_for('coordinator.add_room') }}" class="row-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label>Name <input name="name" required></label>
       <label>Seats <input name="capacity" type="number" min="1" required></label>
       <label>Type <select name="room_type">{% for t in room_types %}<option value="{{ t }}">{{ t.replace('_', ' ') }}</option>{% endfor %}</select></label>
@@ -62,14 +83,14 @@
     <ul class="plain">
       {% for rule in rules %}
         <li>{{ rule.course_a.code }} ✕ {{ rule.course_b.code }}
-          <form method="post" action="{{ url_for('coordinator.delete_rule', rule_id=rule.id) }}" class="inline">
+          <form method="post" action="{{ url_for('coordinator.delete_rule', rule_id=rule.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="link danger">Remove</button></form></li>
       {% else %}
         <li class="muted">No rules yet.</li>
       {% endfor %}
     </ul>
     {% if courses|length > 1 %}
-    <form method="post" action="{{ url_for('coordinator.add_rule') }}" class="row-form">
+    <form method="post" action="{{ url_for('coordinator.add_rule') }}" class="row-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label>Course <select name="course_a_id">{% for c in courses %}<option value="{{ c.id }}">{{ c.code }}</option>{% endfor %}</select></label>
       <label>must not overlap <select name="course_b_id">{% for c in courses %}<option value="{{ c.id }}" {% if loop.index == 2 %}selected{% endif %}>{{ c.code }}</option>{% endfor %}</select></label>
       <button type="submit" class="button">Add rule</button>
@@ -82,16 +103,16 @@
   <h2>Courses</h2>
   <div class="table-wrap">
   <table>
-    <thead><tr><th>Code</th><th>Title</th><th>Enrolled</th><th>Lecture / lab hrs</th><th>Instructor</th><th>Preferences</th><th></th></tr></thead>
+    <thead><tr><th>Code</th><th>Title</th><th class="num">Enrolled</th><th class="num">Lecture / lab hrs</th><th>Instructor</th><th>Preferences</th><th></th></tr></thead>
     <tbody>
     {% for c in courses %}
       <tr>
-        <td><strong>{{ c.code }}</strong></td>
+        <td class="mono"><strong>{{ c.code }}</strong></td>
         <td>{{ c.title }}</td>
-        <td>{{ c.enrollment }}</td>
-        <td>{{ c.effective_lecture_hours }} / {{ c.effective_lab_hours }}</td>
+        <td class="num">{{ c.enrollment }}</td>
+        <td class="num">{{ c.effective_lecture_hours }} / {{ c.effective_lab_hours }}</td>
         <td>
-          <form method="post" action="{{ url_for('coordinator.assign_instructor', course_id=c.id) }}" class="inline">
+          <form method="post" action="{{ url_for('coordinator.assign_instructor', course_id=c.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <select name="instructor_id" onchange="this.form.submit()">
               <option value="">— unassigned —</option>
               {% for i in instructors %}<option value="{{ i.id }}" {% if c.instructor_id == i.id %}selected{% endif %}>{{ i.display_name }}</option>{% endfor %}
@@ -102,7 +123,7 @@
         <td>{% if c.preference %}
               <span class="badge published" title="{{ c.preference.midterms }} midterm(s), final exam: {{ 'yes' if c.preference.final_exam else 'no' }}">submitted</span>
             {% else %}<span class="badge draft">none</span>{% endif %}</td>
-        <td><form method="post" action="{{ url_for('coordinator.delete_course', course_id=c.id) }}" class="inline">
+        <td class="actions-cell"><form method="post" action="{{ url_for('coordinator.delete_course', course_id=c.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="link danger" onclick="return confirm('Delete {{ c.code }}?')">Delete</button></form></td>
       </tr>
     {% else %}
@@ -111,7 +132,7 @@
     </tbody>
   </table>
   </div>
-  <form method="post" action="{{ url_for('coordinator.add_course') }}" class="row-form">
+  <form method="post" action="{{ url_for('coordinator.add_course') }}" class="row-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Code <input name="code" required size="8"></label>
     <label>Title <input name="title" required></label>
     <label>Enrolled <input name="enrollment" type="number" min="1" required></label>

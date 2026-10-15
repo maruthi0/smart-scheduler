@@ -4,23 +4,27 @@ All diagrams are written in [Mermaid](https://mermaid.js.org/). GitHub renders t
 
 ## 1. Architecture
 
-Each layer depends only on the layer below it. The scheduling algorithm has **no** Flask or database imports.
+The app is a **monolith**: a single Flask application that is built, tested and deployed as one unit. A monolith suits a team of 3–4 and a one-semester project: one codebase, one process, no network calls between parts. Inside it, the code is split into two packages:
+
+- **`app/frontend/`**: routes (Flask blueprints), Jinja templates and CSS. It handles HTTP and rendering only.
+- **`app/backend/`**: models, business rules (`services.py`) and the scheduling algorithm. It has no routes or templates.
+
+The frontend calls the backend and never the other way round. The scheduling algorithm has **no** Flask or database imports. `app/__init__.py` (the application factory) wires the two together, and `app/config.py` reads all settings from environment variables.
 
 ```mermaid
 flowchart TB
-    subgraph Presentation["Presentation (Flask blueprints + Jinja templates)"]
+    subgraph Frontend["app/frontend (Flask blueprints + Jinja templates + CSS)"]
         AUTH["auth.py<br/>register · login · roles"]
         COORD["coordinator.py<br/>rooms · courses · rules · schedules · requests"]
         INST["instructor.py<br/>preferences · timetable · requests · .ics"]
     end
-    subgraph Business["Business logic"]
+    subgraph Backend["app/backend (business logic + data)"]
         SVC["services.py<br/>validation · permissions · persistence"]
         ALG["scheduler.py<br/>constraint solver (pure Python)"]
-    end
-    subgraph Data["Data"]
         ORM["models.py (SQLAlchemy)"]
-        DB[("SQLite / any SQL DB")]
     end
+    DB[("PostgreSQL 18<br/>(SQLite fallback)")]
+    ENV[/".env → config.py"/]
     Coordinator((Coordinator)) --> COORD
     Instructor((Instructor)) --> INST
     Coordinator --> AUTH
@@ -30,12 +34,27 @@ flowchart TB
     INST --> SVC
     SVC --> ALG
     SVC --> ORM --> DB
+    ENV -.-> Frontend
+    ENV -.-> Backend
 ```
 
 **Why this design**
 - **The algorithm is isolated.** `scheduler.py` works on plain dataclasses (`RoomSpec`, `SessionSpec`, `Problem`), so it can be unit-tested exhaustively and swapped for a better solver later without touching the web code.
 - **The service layer owns the rules.** Routes only translate HTTP requests into service calls and exceptions into flash messages or status codes (400/403/404).
 - **Roles are enforced per blueprint.** Each blueprint's `before_request` calls `require_role`, so every coordinator route is protected, including any added later.
+
+### Configuration and security
+
+| Concern | How it is handled | Where |
+|---|---|---|
+| Secrets | `SECRET_KEY` and `COORDINATOR_CODE` come from `.env` (git-ignored). The app refuses to start if either is missing. `.env.example` documents every setting. | `app/config.py`, `run.py` |
+| CSRF | Every POST form carries a `csrf_token`; requests without it are rejected with 400. | `CSRFProtect` in `app/__init__.py`, all templates |
+| Debug mode | Taken from `FLASK_DEBUG`, never hardcoded. | `run.py` |
+| Session cookie | `HttpOnly` (Flask default), `SameSite=Lax`, `Secure` when `SESSION_COOKIE_SECURE=1`. | `app/config.py` |
+| Coordinator code | Compared in constant time (`hmac.compare_digest`). | `app/frontend/auth.py` |
+| Passwords | Stored as salted hashes (Werkzeug). | `app/backend/models.py` |
+| Dependencies | Exact versions pinned. | `requirements.txt` |
+| Database | PostgreSQL via `DATABASE_URL` (psycopg 3 driver), with its own least-privilege `scheduler` role. SQLite is used when `DATABASE_URL` is empty. | `app/config.py`, `.env` |
 
 ### Design patterns
 | Pattern | Where |
@@ -280,4 +299,5 @@ This is a greedy best-first search with backtracking. It **guarantees** that eve
 | Unit (services) | `tests/test_services.py` | Validation (equivalence partitions), permissions, persistence, publishing, change requests, .ics content |
 | Integration | `tests/test_routes.py` | Flask test client covering HTTP → service → DB, role access (403/302), what the user sees |
 | Smoke | `tests/test_seed.py` | The demo data always produces a valid schedule |
-| CI | `.github/workflows/ci.yml` | Python 3.11–3.13 on every push and PR; fails if coverage drops below 85% |
+| Security | `tests/test_security.py` | Missing secrets stop start-up, settings come from the environment, CSRF rejects forms without a token |
+| CI | `.github/workflows/ci.yml` | Python 3.11–3.13 on SQLite, plus Python 3.13 on PostgreSQL 18, on every push and PR; fails if coverage drops below 85% |

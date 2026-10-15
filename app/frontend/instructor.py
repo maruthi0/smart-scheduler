@@ -1,10 +1,10 @@
 """Instructor pages: preferences, read-only timetable, change requests, calendar."""
 from flask import Blueprint, Response, flash, g, redirect, render_template, request, url_for
 
-from . import services
+from ..backend import services
 from .auth import require_role
-from .models import INSTRUCTOR, PERIODS, ROOM_TYPES, ChangeRequest, Course
-from .services import DAYS, HOURS, ValidationError
+from ..backend.models import INSTRUCTOR, PERIODS, ROOM_TYPES, ChangeRequest, Course
+from ..backend.services import DAYS, HOURS, ValidationError
 
 bp = Blueprint("instructor", __name__, url_prefix="/instructor")
 

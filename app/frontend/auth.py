@@ -1,11 +1,13 @@
 """Registration, login and logout, plus role-based access helpers."""
+import hmac
+
 from flask import (
     Blueprint, abort, current_app, flash, g, redirect, render_template, request, session,
     url_for,
 )
 
-from .models import COORDINATOR, ROLES, User, db
-from .services import ValidationError, authenticate, register_user
+from ..backend.models import COORDINATOR, ROLES, User, db
+from ..backend.services import ValidationError, authenticate, register_user
 
 bp = Blueprint("auth", __name__)
 
@@ -39,7 +41,9 @@ def register():
     if request.method == "POST":
         form = request.form
         role = form.get("role")
-        if role == COORDINATOR and form.get("coordinator_code") != current_app.config["COORDINATOR_CODE"]:
+        code = (form.get("coordinator_code") or "").encode()
+        expected = current_app.config["COORDINATOR_CODE"].encode()
+        if role == COORDINATOR and not hmac.compare_digest(code, expected):
             flash("Invalid coordinator access code.", "error")
             return render_template("register.html", roles=ROLES, form=form)
         try:

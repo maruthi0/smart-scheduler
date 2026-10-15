@@ -1,11 +1,11 @@
 """Unit tests for the service layer (business rules + database)."""
 import pytest
 
-from app import services
-from app.models import (
+from app.backend import services
+from app.backend.models import (
     ACCEPTED, ARCHIVED, COORDINATOR, DRAFT, INSTRUCTOR, PUBLISHED, REJECTED, ScheduledSession,
 )
-from app.services import (
+from app.backend.services import (
     ConflictError, NotFoundError, PermissionDenied, SchedulingError, ValidationError,
 )
 

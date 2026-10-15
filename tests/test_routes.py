@@ -1,5 +1,5 @@
 """Integration tests through the Flask test client (HTTP -> service -> DB)."""
-from app.models import ChangeRequest, Course, Room, Schedule
+from app.backend.models import ChangeRequest, Course, Room, Schedule
 from tests.conftest import login
 
 
@@ -197,3 +197,15 @@ def test_instructor_downloads_calendar(instructor_client, published):
     assert resp.mimetype == "text/calendar"
     assert "attachment" in resp.headers["Content-Disposition"]
     assert b"BEGIN:VEVENT" in resp.data
+
+
+def test_error_pages_are_rendered(coord_client):
+    resp = coord_client.get("/coordinator/schedules/999")
+    assert resp.status_code == 404 and b"Error 404" in resp.data
+    resp = coord_client.get("/no-such-page")
+    assert resp.status_code == 404 and b"Page not found" in resp.data
+
+
+def test_forbidden_page_is_rendered(instructor_client):
+    resp = instructor_client.get("/coordinator/")
+    assert resp.status_code == 403 and b"No access" in resp.data

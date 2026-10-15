@@ -1,8 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Change requests · Course Scheduler{% endblock %}
+{% block hero %}
+<div class="page-head">
+  <div>
+    <h1>Change requests</h1>
+    <p>Suggestions from instructors about the published schedule. Only coordinators can move sessions.</p>
+  </div>
+</div>
+{% endblock %}
 {% block content %}
 <section class="card">
-  <h1>Change requests from instructors</h1>
   {% for r in requests %}
     <div class="request {{ r.status }}">
       <div class="row">
@@ -11,13 +18,13 @@
           {% if r.session %} about <strong>{{ r.session.course.code }} {{ r.session.kind }}</strong>
             ({{ days[r.session.day] }} {{ '%02d:00' % r.session.hour }}, {{ r.session.room.name }}){% endif %}
           · <a href="{{ url_for('coordinator.view_schedule', schedule_id=r.schedule_id) }}">{{ r.schedule.semester }}</a>
-          <br><small class="muted">{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+          <br><small class="muted mono">{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
         </div>
         <span class="badge {{ r.status }}">{{ r.status }}</span>
       </div>
       <p>{{ r.message }}</p>
       {% if r.status == 'pending' %}
-        <form method="post" action="{{ url_for('coordinator.respond', request_id=r.id) }}" class="row-form">
+        <form method="post" action="{{ url_for('coordinator.respond', request_id=r.id) }}" class="row-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <label>Reply to instructor <input name="response" placeholder="Optional"></label>
           <button name="decision" value="accept" class="button">Accept</button>
           <button name="decision" value="reject" class="button secondary">Reject</button>
@@ -27,7 +34,8 @@
       {% endif %}
     </div>
   {% else %}
-    <p class="muted">No change requests yet.</p>
+    <h2>No change requests yet</h2>
+    <p class="muted">When an instructor asks to move one of their sessions, the request appears here. Accept or reject it with a short reply; the instructor sees your answer on their dashboard.</p>
   {% endfor %}
 </section>
 {% endblock %}

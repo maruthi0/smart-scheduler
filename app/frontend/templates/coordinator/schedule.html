@@ -1,27 +1,30 @@
 {% extends "base.html" %}
 {% from "_timetable.html" import timetable %}
 {% block title %}{{ schedule.semester }} · Course Scheduler{% endblock %}
-{% block content %}
-<section class="card">
-  <div class="row">
+{% block hero %}
+<a class="back" href="{{ url_for('coordinator.dashboard') }}">← Dashboard</a>
+<div class="page-head">
     <div>
       <h1>{{ schedule.semester }} <span class="badge {{ schedule.status }}">{{ schedule.status }}</span></h1>
-      <p class="muted">{{ schedule.start_date }} → {{ schedule.end_date }} ·
+      <p class="muted"><span class="mono">{{ schedule.start_date }} → {{ schedule.end_date }}</span> ·
         {{ schedule.sessions|length }} sessions ·
         all hard constraints satisfied ·
         <strong>{{ schedule.soft_penalty }}</strong> unmet instructor preference{{ 's' if schedule.soft_penalty != 1 }}</p>
     </div>
     <div class="actions">
       {% if schedule.status != 'published' %}
-        <form method="post" action="{{ url_for('coordinator.publish', schedule_id=schedule.id) }}" class="inline">
+        <form method="post" action="{{ url_for('coordinator.publish', schedule_id=schedule.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="button">Publish</button></form>
-        <form method="post" action="{{ url_for('coordinator.delete_schedule', schedule_id=schedule.id) }}" class="inline">
+        <form method="post" action="{{ url_for('coordinator.delete_schedule', schedule_id=schedule.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="button secondary" onclick="return confirm('Delete this schedule?')">Delete</button></form>
       {% endif %}
     </div>
-  </div>
+</div>
+{% endblock %}
+{% block content %}
+<section class="card">
   {{ timetable(grid, days, hours, soft=soft) }}
-  <p class="muted legend"><span class="session lecture">lecture</span> <span class="session lab">lab</span> <span class="session warn">⚠ unmet preference (hover for details)</span></p>
+  <p class="muted legend"><span><span class="session lecture"></span>Lecture</span> <span><span class="session lab"></span>Lab</span> <span><span class="mark">!</span>&nbsp;Unmet preference (hover a session for details)</span></p>
 </section>
 
 <section class="card">
@@ -33,11 +36,11 @@
     <tbody>
     {% for s in schedule.sessions %}
       <tr>
-        <td><strong>{{ s.course.code }}</strong> {{ s.kind }}<br><small>{{ days[s.day] }} {{ '%02d:00' % s.hour }} · {{ s.room.name }}</small></td>
+        <td><strong class="mono">{{ s.course.code }}</strong> {{ s.kind }}<br><small class="muted"><span class="mono">{{ days[s.day] }} {{ '%02d:00' % s.hour }}</span> · {{ s.room.name }}</small></td>
         <td>{{ s.course.instructor.display_name if s.course.instructor else '—' }}</td>
         <td>{% if s.id in soft %}<small class="warn-text">{{ soft[s.id]|join('; ') }}</small>{% else %}<small class="muted">none</small>{% endif %}</td>
         <td>
-          <form method="post" action="{{ url_for('coordinator.move_session', schedule_id=schedule.id, session_id=s.id) }}" class="inline">
+          <form method="post" action="{{ url_for('coordinator.move_session', schedule_id=schedule.id, session_id=s.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <select name="day">{% for d in days %}<option value="{{ loop.index0 }}" {% if loop.index0 == s.day %}selected{% endif %}>{{ d }}</option>{% endfor %}</select>
             <select name="hour">{% for h in hours %}<option value="{{ h }}" {% if h == s.hour %}selected{% endif %}>{{ '%02d:00' % h }}</option>{% endfor %}</select>
             <select name="room_id">{% for r in rooms %}<option value="{{ r.id }}" {% if r.id == s.room_id %}selected{% endif %}>{{ r.name }} ({{ r.capacity }})</option>{% endfor %}</select>

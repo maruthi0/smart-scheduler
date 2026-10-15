@@ -1,18 +1,18 @@
 {# Weekly timetable grid. `mine` highlights one instructor's sessions; `soft` maps session id -> unmet preferences. #}
 {% macro timetable(grid, days, hours, mine=None, soft={}) %}
 <div class="table-wrap">
-  <table class="timetable">
-    <thead><tr><th></th>{% for d in days %}<th>{{ d }}</th>{% endfor %}</tr></thead>
+  <table class="timetable{% if mine %} has-mine{% endif %}">
+    <thead><tr><th><span class="muted">Time</span></th>{% for d in days %}<th scope="col">{{ d }}</th>{% endfor %}</tr></thead>
     <tbody>
     {% for h in hours %}
       <tr>
-        <th>{{ '%02d:00' % h }}</th>
+        <th scope="row">{{ '%02d:00' % h }}</th>
         {% for d in range(days|length) %}
           <td>
           {% for s in grid.get((d, h), []) %}
             <div class="session {{ s.kind }}{% if mine and s.course.instructor_id == mine %} mine{% endif %}{% if s.id in soft %} warn{% endif %}"
                  title="{{ s.course.title }}{% if s.id in soft %} — {{ soft[s.id]|join('; ') }}{% endif %}">
-              <strong>{{ s.course.code }}</strong> {{ s.kind }}{% if s.id in soft %} ⚠{% endif %}<br>
+              <strong>{{ s.course.code }}</strong> {{ s.kind }}{% if s.id in soft %}<span class="mark" aria-label="unmet preference">!</span>{% endif %}
               <small>{{ s.room.name }}{% if s.course.instructor %} · {{ s.course.instructor.display_name }}{% endif %}</small>
             </div>
           {% endfor %}

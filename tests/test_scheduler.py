@@ -1,7 +1,7 @@
 """Unit tests for the timetabling algorithm (no database or Flask involved)."""
 import pytest
 
-from app.scheduler import (
+from app.backend.scheduler import (
     HOURS, Placement, Problem, RoomSpec, SchedulingError, SessionSpec, Timetable, generate,
     room_suits,
 )

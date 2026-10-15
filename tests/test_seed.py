@@ -1,6 +1,6 @@
 """The demo data used in the sprint video must always produce a valid schedule."""
-from app import services
-from app.models import User
+from app.backend import services
+from app.backend.models import User
 
 
 def test_seed_command_creates_schedulable_demo(app):

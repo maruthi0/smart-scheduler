@@ -1,18 +1,19 @@
 """Demo data for development and the sprint demonstration video."""
+from flask import current_app
+
 from .models import COORDINATOR, INSTRUCTOR, Course, User, db
 from . import services
-
-DEMO_PASSWORD = "password"
 
 
 def seed_demo():
     if User.query.first():
         raise SystemExit("Database is not empty; delete instance/scheduler.db first.")
+    password = current_app.config["DEMO_PASSWORD"]
 
-    services.register_user("coord", DEMO_PASSWORD, COORDINATOR, "Dr. Rivera (Coordinator)")
-    smith = services.register_user("smith", DEMO_PASSWORD, INSTRUCTOR, "Dr. Smith")
-    jones = services.register_user("jones", DEMO_PASSWORD, INSTRUCTOR, "Dr. Jones")
-    lee = services.register_user("lee", DEMO_PASSWORD, INSTRUCTOR, "Dr. Lee")
+    services.register_user("coord", password, COORDINATOR, "Dr. Rivera (Coordinator)")
+    smith = services.register_user("smith", password, INSTRUCTOR, "Dr. Smith")
+    jones = services.register_user("jones", password, INSTRUCTOR, "Dr. Jones")
+    lee = services.register_user("lee", password, INSTRUCTOR, "Dr. Lee")
 
     for name, capacity, kind in [
         ("Haag 201 Theater", 200, "theater"),

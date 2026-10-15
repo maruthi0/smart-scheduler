@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Register · Course Scheduler{% endblock %}
+{% block body_class %}auth-body{% endblock %}
+{% block content %}
+<div class="auth">
+  {% include "_auth_aside.html" %}
+  <section class="card auth-form" aria-labelledby="register-title">
+    <h2 id="register-title">Create an account</h2>
+    <p class="muted intro">Instructors can register directly. Coordinators also need the access code from the department.</p>
+    <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Full name <input name="full_name" value="{{ form.get('full_name', '') }}" placeholder="Dr. Amara Okafor" autocomplete="name"></label>
+      <div class="row-form flush">
+        <label>Username <input name="username" required minlength="3" value="{{ form.get('username', '') }}" autocomplete="username"></label>
+        <label>Password <input name="password" type="password" required minlength="6" autocomplete="new-password"></label>
+      </div>
+      <div class="row-form">
+        <label>Role
+          <select name="role" id="role">
+            {% for r in roles %}<option value="{{ r }}" {% if form.get('role', 'instructor') == r %}selected{% endif %}>{{ r|title }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Coordinator code <small class="muted">(if coordinator)</small>
+          <input name="coordinator_code" type="password" autocomplete="off">
+        </label>
+      </div>
+      <div class="form-actions spaced">
+        <button type="submit" class="button">Create account <span class="arrow" aria-hidden="true">→</span></button>
+        <span class="muted">Already registered? <a href="{{ url_for('auth.login') }}">Log in</a></span>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}
