@@ -50,6 +50,16 @@ def test_create_room_validation(app):
         services.create_room("Hall C", 10, "garage")
 
 
+@pytest.mark.parametrize("room_type", ["theater", "lecture_hall", "small_room", "lab"])
+def test_create_room_accepts_all_types_and_capacity_boundaries(app, room_type):
+    room = services.create_room(room_type, 1, room_type)
+    assert room.room_type == room_type
+    assert room.capacity == 1
+
+    largest = services.create_room(f"{room_type}-large", 2000, room_type)
+    assert largest.capacity == 2000
+
+
 def test_create_course_validation(app, instructor, coordinator):
     course = services.create_course("cs101", "Intro", 40, 3, 1, instructor.id)
     assert course.code == "CS101" and course.instructor == instructor
@@ -113,6 +123,13 @@ def test_preference_hours_override_course_defaults(catalog, instructor):
     assert catalog["se"].lecture_hours == 2
 
 
+def test_preference_hours_change_generated_session_count(catalog, instructor):
+    services.save_preference(instructor, catalog["se"].id, {**PREFS, "lecture_hours": 4})
+    schedule = services.generate_schedule("Fall 2026", "2026-08-24", "2026-12-11")
+    assert sum(session.course_id == catalog["se"].id and session.kind == "lecture"
+               for session in schedule.sessions) == 4
+
+
 def test_instructor_cannot_set_preferences_for_others_course(catalog, instructor):
     with pytest.raises(PermissionDenied):
         services.save_preference(instructor, catalog["ml"].id, PREFS)
@@ -138,6 +155,25 @@ def test_generate_schedule_places_every_session(catalog):
     # 2 SE lectures + 2 ML lectures + 1 ML lab + 1 DB lecture
     assert len(schedule.sessions) == 6
     assert sum(s.kind == "lab" for s in schedule.sessions) == 1
+
+
+def test_generated_schedule_satisfies_room_and_people_constraints(published, catalog):
+    placements = [
+        (session.day, session.hour, session.room_id, session.course_id,
+         session.course.instructor_id)
+        for session in published.sessions
+    ]
+
+    assert all(session.room.capacity >= session.course.enrollment
+               for session in published.sessions)
+    assert all(session.kind == "lab" and session.room.room_type == "lab"
+               or session.kind == "lecture" and session.room.room_type != "lab"
+               for session in published.sessions)
+    assert len({(day, hour, room_id) for day, hour, room_id, _, _ in placements}) == len(placements)
+    assert len({(day, hour, course_id) for day, hour, _, course_id, _ in placements}) == len(placements)
+    instructor_slots = [(day, hour, instructor_id) for day, hour, _, _, instructor_id in placements
+                        if instructor_id is not None]
+    assert len(set(instructor_slots)) == len(instructor_slots)
 
 
 def test_generate_uses_preferences(catalog, instructor):
@@ -193,6 +229,31 @@ def test_move_session_rejects_small_room(published, catalog):
                  and r.room_type == "small_room")
     with pytest.raises(ConflictError, match="seats 30"):
         services.move_session(published.id, se.id, small.id, se.day, se.hour)
+
+
+def test_move_session_rejects_wrong_room_type(published, catalog):
+    lab_session = _session(published, catalog["ml"])
+    lecture_room = next(r for r in services.build_problem().rooms
+                        if r.room_type == "lecture_hall")
+    with pytest.raises(ConflictError, match="lab room"):
+        services.move_session(published.id, lab_session.id, lecture_room.id,
+                              lab_session.day, lab_session.hour)
+
+
+def test_move_session_rejects_no_overlap_conflict(published, catalog):
+    services.add_no_overlap(catalog["se"].id, catalog["db"].id)
+    se_session = _session(published, catalog["se"])
+    db_session = _session(published, catalog["db"])
+    occupied_at_target = {session.room_id for session in published.sessions
+                          if (session.day, session.hour) == (se_session.day, se_session.hour)}
+    available_room = next(room for room in services.build_problem().rooms
+                          if room.id not in occupied_at_target
+                          and room.room_type != "lab"
+                          and room.capacity >= catalog["db"].enrollment)
+
+    with pytest.raises(ConflictError, match="must not overlap"):
+        services.move_session(published.id, db_session.id, available_room.id,
+                              se_session.day, se_session.hour)
 
 
 def test_move_session_updates_soft_penalty(published, catalog, instructor):

@@ -125,6 +125,13 @@ def test_delete_draft_schedule(coord_client, catalog):
     assert b"Schedule deleted" in resp.data
 
 
+def test_published_schedule_cannot_be_deleted(coord_client, published):
+    resp = coord_client.post(f"/coordinator/schedules/{published.id}/delete",
+                             follow_redirects=True)
+    assert b"published schedule cannot be deleted" in resp.data
+    assert Schedule.query.filter_by(id=published.id).one().status == "published"
+
+
 def test_missing_schedule_404(coord_client):
     assert coord_client.get("/coordinator/schedules/999").status_code == 404
 
@@ -140,6 +147,18 @@ def test_coordinator_responds_to_request(client, published, catalog, coordinator
                        data={"decision": "reject", "response": "Room unavailable"},
                        follow_redirects=True)
     assert b"Request rejected" in resp.data and b"Room unavailable" in resp.data
+
+
+def test_instructor_cannot_request_change_to_others_session(instructor_client, published,
+                                                            catalog):
+    other_session = next(session for session in published.sessions
+                         if session.course_id == catalog["ml"].id)
+    resp = instructor_client.post("/instructor/requests", data={
+        "session_id": other_session.id, "message": "Move this session"},
+        follow_redirects=True)
+    assert resp.status_code == 403
+    assert b"only request changes to your own sessions" in resp.data
+    assert ChangeRequest.query.count() == 0
 
 
 # --- Instructor ------------------------------------------------------------
