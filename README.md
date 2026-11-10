@@ -3,7 +3,7 @@
 A university course-scheduling web app for the CS 5551 team project (Project 2: Event Scheduling App).
 
 - **Coordinators** manage rooms, courses and "no-overlap" rules. They **generate a semester timetable automatically**, adjust it, publish it, and answer instructors' change requests.
-- **Instructors** submit teaching preferences (lecture/lab hours, midterms, final exam, venue, days, time of day). They view the published timetable read-only, request changes, and export their schedule to Google Calendar, Outlook or Apple Calendar (.ics).
+- **Instructors** submit teaching preferences (midterms, final exam, venue, days, time of day). They view the published timetable read-only, request changes, and export their schedule to Google Calendar, Outlook or Apple Calendar (.ics).
 - The generator **always satisfies the hard constraints** (room capacity and type, no double-booking, no-overlap rules). It **satisfies as many soft constraints (preferences) as it can** and lists the ones it could not meet.
 
 ## Run it
