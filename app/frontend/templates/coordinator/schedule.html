@@ -16,7 +16,7 @@
         <form method="post" action="{{ url_for('coordinator.publish', schedule_id=schedule.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="button">Publish</button></form>
         <form method="post" action="{{ url_for('coordinator.delete_schedule', schedule_id=schedule.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="button secondary" onclick="return confirm('Delete this schedule?')">Delete</button></form>
+          <button class="button secondary" data-confirm="Delete this schedule?">Delete</button></form>
       {% endif %}
     </div>
 </div>

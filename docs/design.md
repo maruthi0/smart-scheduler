@@ -14,7 +14,7 @@ The frontend calls the backend and never the other way round. The scheduling alg
 ```mermaid
 flowchart TB
     subgraph Frontend["app/frontend (Flask blueprints + Jinja templates + CSS)"]
-        AUTH["auth.py<br/>register · login · roles"]
+        AUTH["auth.py<br/>login · roles"]
         COORD["coordinator.py<br/>rooms · courses · rules · schedules · requests"]
         INST["instructor.py<br/>preferences · timetable · requests · .ics"]
     end
@@ -47,11 +47,15 @@ flowchart TB
 
 | Concern | How it is handled | Where |
 |---|---|---|
-| Secrets | `SECRET_KEY` and `COORDINATOR_CODE` come from `.env` (git-ignored). The app refuses to start if either is missing. `.env.example` documents every setting. | `app/config.py`, `run.py` |
+| Secrets | `SECRET_KEY` comes from `.env` (git-ignored). The app refuses to start if it is missing. `.env.example` documents every setting. | `app/config.py`, `run.py` |
 | CSRF | Every POST form carries a `csrf_token`; requests without it are rejected with 400. | `CSRFProtect` in `app/__init__.py`, all templates |
 | Debug mode | Taken from `FLASK_DEBUG`, never hardcoded. | `run.py` |
 | Session cookie | `HttpOnly` (Flask default), `SameSite=Lax`, `Secure` when `SESSION_COOKIE_SECURE=1`. | `app/config.py` |
-| Coordinator code | Compared in constant time (`hmac.compare_digest`). | `app/frontend/auth.py` |
+| Accounts | Pre-assigned, with no public registration. `usernames&passwords.csv` (git-ignored) lists them in plain text; `flask --app run load-accounts` stores only salted hashes and locks any account not listed. Assigned passwords must be changed at first login. | `app/__init__.py`, `services.sync_accounts`, `auth.load_current_user` |
+| Login throttling | Five failed logins for a username block it for 15 minutes, including for usernames that do not exist. | `services.authenticate` |
+| Session validity | Each session stores a token derived from the password hash, so changing, resetting or locking a password ends other sessions. Sessions expire after 2 idle hours. | `models.User.session_token`, `auth.load_current_user`, `app/config.py` |
+| Response headers | Content-Security-Policy without inline scripts, `nosniff`, `Referrer-Policy`, HSTS over HTTPS, and `no-store` on pages for logged-in users. | `app/__init__.py` |
+| Dependency scanning | `pip-audit` runs in CI. | `.github/workflows/ci.yml` |
 | Passwords | Stored as salted hashes (Werkzeug). | `app/backend/models.py` |
 | Dependencies | Exact versions pinned. | `requirements.txt` |
 | Database | PostgreSQL via `DATABASE_URL` (psycopg 3 driver), with its own least-privilege `scheduler` role. SQLite is used when `DATABASE_URL` is empty. | `app/config.py`, `.env` |
@@ -76,6 +80,12 @@ classDiagram
         +full_name
         +role
         +password_hash
+        +max_hours
+        +must_change_password
+        +assigned_hours
+        +hours_left
+        +blocked_slots
+        +session_token
         +display_name
         +is_coordinator
         +set_password()
@@ -94,12 +104,8 @@ classDiagram
         +enrollment
         +lecture_hours
         +lab_hours
-        +effective_lecture_hours
-        +effective_lab_hours
     }
     class CoursePreference {
-        +lecture_hours
-        +lab_hours
         +midterms
         +final_exam
         +venue_type
@@ -200,11 +206,11 @@ flowchart LR
     I((Instructor))
     G[(Google Calendar)]
     subgraph System["Course Scheduler"]
-        U1([Register / log in])
+        U1([Log in])
         U2([Manage rooms])
         U3([Manage courses & instructors])
         U4([Define no-overlap rules])
-        U5([Submit preferences])
+        U5([Submit preferences and availability])
         U6([Generate schedule])
         U7([Adjust session])
         U8([Publish schedule])

@@ -1,4 +1,5 @@
 """Database models."""
+import hashlib
 from datetime import datetime
 
 from flask_sqlalchemy import SQLAlchemy
@@ -16,6 +17,9 @@ PERIODS = ("any", "morning", "afternoon")
 DRAFT, PUBLISHED, ARCHIVED = "draft", "published", "archived"
 PENDING, ACCEPTED, REJECTED = "pending", "accepted", "rejected"
 
+DEFAULT_MAX_HOURS = 12  # teaching hours a week an instructor can work, until a coordinator edits it
+LOCKED_HASH = "!"  # stored instead of a password hash; matches no password
+
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -24,12 +28,36 @@ class User(db.Model):
     role = db.Column(db.String(20), nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.now, nullable=False)
+    max_hours = db.Column(db.Integer, nullable=False, default=DEFAULT_MAX_HOURS)
+    must_change_password = db.Column(db.Boolean, nullable=False, default=False)
 
     courses = db.relationship("Course", back_populates="instructor")
+    unavailable = db.relationship("Unavailability", cascade="all, delete-orphan")
 
     @property
     def display_name(self):
         return self.full_name or self.username
+
+    @property
+    def assigned_hours(self):
+        return sum(c.lecture_hours + c.lab_hours for c in self.courses)
+
+    @property
+    def hours_left(self):
+        return self.max_hours - self.assigned_hours
+
+    @property
+    def blocked_slots(self):
+        return frozenset((u.day, u.hour) for u in self.unavailable)
+
+    @property
+    def is_locked(self):
+        return self.password_hash == LOCKED_HASH
+
+    @property
+    def session_token(self):
+        # Derived from the password hash, so a change, reset or lock ends existing sessions.
+        return hashlib.sha256(self.password_hash.encode()).hexdigest()[:32]
 
     @property
     def is_coordinator(self):
@@ -40,6 +68,20 @@ class User(db.Model):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+
+class Unavailability(db.Model):
+    """Hard constraint: this instructor cannot teach in this time slot."""
+    instructor_id = db.Column(db.Integer, db.ForeignKey("user.id"), primary_key=True)
+    day = db.Column(db.Integer, primary_key=True)
+    hour = db.Column(db.Integer, primary_key=True)
+
+
+class LoginAttempt(db.Model):
+    """Recent failed logins for one username, used to slow down password guessing."""
+    username = db.Column(db.String(80), primary_key=True)
+    failures = db.Column(db.Integer, nullable=False, default=0)
+    last_failure = db.Column(db.DateTime, nullable=False)
 
 
 class Room(db.Model):
@@ -62,15 +104,6 @@ class Course(db.Model):
     preference = db.relationship("CoursePreference", back_populates="course",
                                  uselist=False, cascade="all, delete-orphan")
 
-    # The instructor's submitted hours override the coordinator's defaults.
-    @property
-    def effective_lecture_hours(self):
-        return self.preference.lecture_hours if self.preference else self.lecture_hours
-
-    @property
-    def effective_lab_hours(self):
-        return self.preference.lab_hours if self.preference else self.lab_hours
-
 
 class NoOverlap(db.Model):
     """Hard constraint: two courses (e.g. same-cohort core courses) must not clash."""
@@ -85,8 +118,10 @@ class NoOverlap(db.Model):
 class CoursePreference(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     course_id = db.Column(db.Integer, db.ForeignKey("course.id"), unique=True, nullable=False)
-    lecture_hours = db.Column(db.Integer, nullable=False)
-    lab_hours = db.Column(db.Integer, nullable=False)
+    # shortcut: retired and never read (hours live on Course), kept because existing databases
+    # have these as NOT NULL and there are no migrations; drop them once a migration runs.
+    lecture_hours = db.Column(db.Integer, nullable=False, default=0)
+    lab_hours = db.Column(db.Integer, nullable=False, default=0)
     midterms = db.Column(db.Integer, nullable=False, default=1)
     final_exam = db.Column(db.Boolean, nullable=False, default=True)
     venue_type = db.Column(db.String(20))

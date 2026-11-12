@@ -5,17 +5,13 @@
 <div class="page-head">
   <div>
     <h1>{{ course.code }} preferences</h1>
-    <p>{{ course.title }} · {{ course.enrollment }} students. Hours per week are used as given. Day, time and venue are preferences: the scheduler tries to meet them, but room availability comes first.</p>
+    <p>{{ course.title }} · {{ course.enrollment }} students · {{ course.lecture_hours }} lecture and {{ course.lab_hours }} lab hours a week, set by the coordinators. Day, time and venue are preferences: the scheduler tries to meet them, but room availability comes first.</p>
   </div>
 </div>
 {% endblock %}
 {% block content %}
 <section class="card narrow">
   <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="row-form">
-      <label>Lecture hours / week <input name="lecture_hours" type="number" min="0" max="10" required value="{{ pref.lecture_hours if pref else course.lecture_hours }}"></label>
-      <label>Lab hours / week <input name="lab_hours" type="number" min="0" max="10" required value="{{ pref.lab_hours if pref else course.lab_hours }}"></label>
-    </div>
     <div class="row-form">
       <label>Midterms <input name="midterms" type="number" min="0" max="5" value="{{ pref.midterms if pref else 1 }}"></label>
       <label class="check"><input type="checkbox" name="final_exam" {% if not pref or pref.final_exam %}checked{% endif %}> Final exam</label>

@@ -1,7 +1,7 @@
 """Coordinator pages: rooms, courses, constraints, schedule generation and editing."""
 from datetime import date
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, g, redirect, render_template, request, url_for
 
 from ..backend import services
 from .auth import require_role
@@ -33,6 +33,14 @@ def _back():
     return redirect(url_for("coordinator.dashboard"))
 
 
+def _warn_if_over_limit(course):
+    """`course` is None when the save failed, and its instructor may be unassigned."""
+    teacher = course and course.instructor
+    if teacher and teacher.hours_left < 0:
+        flash(f"{teacher.display_name} is now over their limit by {-teacher.hours_left} "
+              "hour(s) a week.", "error")
+
+
 @bp.get("/")
 def dashboard():
     return render_template(
@@ -40,6 +48,8 @@ def dashboard():
         rooms=Room.query.order_by(Room.name).all(),
         courses=Course.query.order_by(Course.code).all(),
         instructors=services.instructors(),
+        workloads=services.workloads(),
+        accounts=services.accounts(),
         rules=NoOverlap.query.all(),
         schedules=Schedule.query.order_by(Schedule.created_at.desc()).all(),
         pending=ChangeRequest.query.filter_by(status=PENDING).count(),
@@ -69,16 +79,26 @@ def delete_room(room_id):
 @bp.post("/courses")
 def add_course():
     f = request.form
-    _run(lambda: services.create_course(
+    _warn_if_over_limit(_run(lambda: services.create_course(
         f.get("code"), f.get("title"), f.get("enrollment"), f.get("lecture_hours"),
-        f.get("lab_hours"), f.get("instructor_id")), "Course added.")
+        f.get("lab_hours"), f.get("instructor_id")), "Course added."))
     return _back()
 
 
 @bp.post("/courses/<int:course_id>/instructor")
 def assign_instructor(course_id):
-    _run(lambda: services.assign_instructor(course_id, request.form.get("instructor_id")),
-         "Instructor updated.")
+    _warn_if_over_limit(_run(
+        lambda: services.assign_instructor(course_id, request.form.get("instructor_id")),
+        "Instructor updated."))
+    return _back()
+
+
+@bp.post("/courses/<int:course_id>/hours")
+def set_course_hours(course_id):
+    f = request.form
+    _warn_if_over_limit(_run(
+        lambda: services.set_course_hours(course_id, f.get("lecture_hours"), f.get("lab_hours")),
+        "Hours updated."))
     return _back()
 
 
@@ -86,6 +106,24 @@ def assign_instructor(course_id):
 def delete_course(course_id):
     _run(lambda: services.delete_course(course_id), "Course deleted.")
     return _back()
+
+
+@bp.post("/instructors/<int:user_id>/max-hours")
+def set_max_hours(user_id):
+    _run(lambda: services.set_max_hours(user_id, request.form.get("max_hours")),
+         "Hour limit updated.")
+    return _back()
+
+
+@bp.post("/accounts/<int:user_id>/reset-password")
+def reset_password(user_id):
+    try:
+        account, temporary = services.reset_password(g.user, user_id)
+    except ValidationError as e:
+        flash(str(e), "error")
+        return _back()
+    # Shown on this page only: a flash message would store it in the session cookie.
+    return render_template("coordinator/temp_password.html", account=account, temporary=temporary)
 
 
 # --- No-overlap rules ------------------------------------------------------

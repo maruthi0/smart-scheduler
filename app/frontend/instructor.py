@@ -20,6 +20,7 @@ def dashboard():
     return render_template(
         "instructor/dashboard.html",
         courses=Course.query.filter_by(instructor_id=g.user.id).order_by(Course.code).all(),
+        workloads=services.workloads(),
         schedule=schedule,
         sessions=services.instructor_sessions(g.user, schedule) if schedule else [],
         my_requests=ChangeRequest.query.filter_by(instructor_id=g.user.id)
@@ -44,6 +45,21 @@ def preferences(course_id):
     return render_template("instructor/preferences.html", course=course, pref=course.preference,
                            days=DAYS, periods=PERIODS,
                            venues=[t for t in ROOM_TYPES if t != "lab"])
+
+
+@bp.route("/availability", methods=["GET", "POST"])
+def availability():
+    if request.method == "POST":
+        try:
+            services.save_unavailability(g.user, request.form.getlist("unavailable"))
+        except ValidationError as e:
+            flash(str(e), "error")
+        else:
+            flash("Your availability was saved. It applies the next time a schedule is generated.",
+                  "success")
+            return redirect(url_for("instructor.availability"))
+    return render_template("instructor/availability.html", blocked=g.user.blocked_slots,
+                           days=DAYS, hours=HOURS)
 
 
 @bp.get("/schedule")

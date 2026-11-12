@@ -1,7 +1,8 @@
 """Settings read from environment variables. Copy .env.example to .env to set them."""
 import os
+from datetime import timedelta
 
-REQUIRED = ("SECRET_KEY", "COORDINATOR_CODE")
+REQUIRED = ("SECRET_KEY",)
 
 
 def _flag(name):
@@ -22,11 +23,9 @@ def load_config(app, overrides=None):
         SQLALCHEMY_DATABASE_URI=os.environ.get("DATABASE_URL")
         or "sqlite:///" + os.path.join(app.instance_path, "scheduler.db"),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
-        # Registering as a coordinator requires this code, so any visitor
-        # cannot give themselves permission to edit schedules.
-        COORDINATOR_CODE=os.environ.get("COORDINATOR_CODE"),
         # Password given to the demo accounts created by `flask --app run seed`.
         DEMO_PASSWORD=os.environ.get("DEMO_PASSWORD") or "password",
+        PERMANENT_SESSION_LIFETIME=timedelta(hours=2),  # logged out after 2 idle hours
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=_flag("SESSION_COOKIE_SECURE"),
     )

@@ -61,7 +61,7 @@
         <tr>
           <td>{{ r.name }}</td><td class="num">{{ r.capacity }}</td><td>{{ r.room_type.replace('_', ' ') }}</td>
           <td class="actions-cell"><form method="post" action="{{ url_for('coordinator.delete_room', room_id=r.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="link danger" onclick="return confirm('Delete {{ r.name }}?')">Delete</button></form></td>
+            <button class="link danger" data-confirm="Delete {{ r.name }}?">Delete</button></form></td>
         </tr>
       {% else %}
         <tr><td colspan="4" class="muted">No rooms yet.</td></tr>
@@ -110,12 +110,18 @@
         <td class="mono"><strong>{{ c.code }}</strong></td>
         <td>{{ c.title }}</td>
         <td class="num">{{ c.enrollment }}</td>
-        <td class="num">{{ c.effective_lecture_hours }} / {{ c.effective_lab_hours }}</td>
+        <td class="num">
+          <form method="post" action="{{ url_for('coordinator.set_course_hours', course_id=c.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input name="lecture_hours" type="number" min="0" max="10" required value="{{ c.lecture_hours }}" aria-label="{{ c.code }} lecture hours">
+            <input name="lab_hours" type="number" min="0" max="10" required value="{{ c.lab_hours }}" aria-label="{{ c.code }} lab hours">
+            <button class="link">Save</button>
+          </form>
+        </td>
         <td>
           <form method="post" action="{{ url_for('coordinator.assign_instructor', course_id=c.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <select name="instructor_id" onchange="this.form.submit()">
+            <select name="instructor_id" data-autosubmit>
               <option value="">— unassigned —</option>
-              {% for i in instructors %}<option value="{{ i.id }}" {% if c.instructor_id == i.id %}selected{% endif %}>{{ i.display_name }}</option>{% endfor %}
+              {% for i in instructors %}<option value="{{ i.id }}" {% if c.instructor_id == i.id %}selected{% endif %}>{{ i.display_name }} ({{ i.hours_left }} h left)</option>{% endfor %}
             </select>
             <noscript><button class="link">Save</button></noscript>
           </form>
@@ -124,7 +130,7 @@
               <span class="badge published" title="{{ c.preference.midterms }} midterm(s), final exam: {{ 'yes' if c.preference.final_exam else 'no' }}">submitted</span>
             {% else %}<span class="badge draft">none</span>{% endif %}</td>
         <td class="actions-cell"><form method="post" action="{{ url_for('coordinator.delete_course', course_id=c.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="link danger" onclick="return confirm('Delete {{ c.code }}?')">Delete</button></form></td>
+          <button class="link danger" data-confirm="Delete {{ c.code }}?">Delete</button></form></td>
       </tr>
     {% else %}
       <tr><td colspan="7" class="muted">No courses yet.</td></tr>
@@ -138,8 +144,32 @@
     <label>Enrolled <input name="enrollment" type="number" min="1" required></label>
     <label>Lecture hrs <input name="lecture_hours" type="number" min="0" max="10" value="3"></label>
     <label>Lab hrs <input name="lab_hours" type="number" min="0" max="10" value="0"></label>
-    <label>Instructor <select name="instructor_id"><option value="">—</option>{% for i in instructors %}<option value="{{ i.id }}">{{ i.display_name }}</option>{% endfor %}</select></label>
+    <label>Instructor <select name="instructor_id"><option value="">—</option>{% for i in instructors %}<option value="{{ i.id }}">{{ i.display_name }} ({{ i.hours_left }} h left)</option>{% endfor %}</select></label>
     <button type="submit" class="button">Add course</button>
   </form>
+</section>
+
+{% include "_workload.html" %}
+
+<section class="card">
+  <h2>Accounts</h2>
+  <p class="muted">Reset a forgotten password. "Temporary" means the person has not chosen their own password yet.</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Password</th><th></th></tr></thead>
+    <tbody>
+    {% for a in accounts %}
+      <tr>
+        <td class="mono">{{ a.username }}</td>
+        <td>{{ a.full_name }}</td>
+        <td>{{ a.role }}</td>
+        <td>{% if a.must_change_password %}<span class="badge draft">temporary</span>{% else %}<span class="badge published">chosen</span>{% endif %}</td>
+        <td class="actions-cell">{% if a.id != g.user.id %}<form method="post" action="{{ url_for('coordinator.reset_password', user_id=a.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="link danger" data-confirm="Reset the password of {{ a.username }}?">Reset password</button></form>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
 </section>
 {% endblock %}

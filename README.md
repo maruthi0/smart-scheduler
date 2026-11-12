@@ -3,7 +3,7 @@
 A university course-scheduling web app for the CS 5551 team project (Project 2: Event Scheduling App).
 
 - **Coordinators** manage rooms, courses and "no-overlap" rules. They **generate a semester timetable automatically**, adjust it, publish it, and answer instructors' change requests.
-- **Instructors** submit teaching preferences (lecture/lab hours, midterms, final exam, venue, days, time of day). They view the published timetable read-only, request changes, and export their schedule to Google Calendar, Outlook or Apple Calendar (.ics).
+- **Instructors** submit teaching preferences (midterms, final exam, venue, days, time of day) for the courses and hours the coordinators assign them. They see each instructor's hour limit, assigned hours and hours left, and mark the times they cannot teach. They view the published timetable read-only, request changes, and export their schedule to Google Calendar, Outlook or Apple Calendar (.ics).
 - The generator **always satisfies the hard constraints** (room capacity and type, no double-booking, no-overlap rules). It **satisfies as many soft constraints (preferences) as it can** and lists the ones it could not meet.
 
 ## Run it
@@ -17,11 +17,25 @@ flask --app run seed              # optional: demo rooms, courses and users
 python run.py
 ```
 
-The app will not start until `SECRET_KEY` and `COORDINATOR_CODE` are set in `.env` (see [Configuration](#configuration)).
+The app will not start until `SECRET_KEY` is set in `.env` (see [Configuration](#configuration)).
 
-Open <http://127.0.0.1:5000>. The demo logins are `coord` (coordinator) and `smith`, `jones`, `lee` (instructors). Their password is `DEMO_PASSWORD` from `.env` (`password` by default).
+Open <http://127.0.0.1:5000>. After `seed`, the demo logins are `coord` (coordinator) and `smith`, `jones`, `lee` (instructors). Their password is `DEMO_PASSWORD` from `.env` (`password` by default).
 
-To register a new coordinator you need the access code `COORDINATOR_CODE` from `.env`.
+## Accounts
+
+There is no public registration: only pre-assigned instructors and coordinators can log in. Their usernames and passwords are in `usernames&passwords.csv`, a table with the columns `username,password,full_name,role`. **The file holds real passwords and is git-ignored, so never commit it.** Share each person's row with them privately.
+
+```powershell
+flask --app run load-accounts     # run after seed, and again whenever the file changes
+```
+
+The command adds or updates every listed account. New accounts get the file's password, and everyone must choose their own password at first login. Existing accounts keep the password they chose, unless you add `--reset-passwords`, which puts everyone back on the file's passwords. Any account not in the file is locked: it can no longer log in and its open sessions end, but its courses and history are kept. Adding it back to the file and re-running restores it.
+
+The Accounts section of the coordinator dashboard shows who has chosen a password. Once someone has, their password in the file stops working. Keep the file private but do not delete it: it must list everyone, because `load-accounts` locks anyone missing from it. Coordinators can reset a forgotten password from that same section.
+
+Five failed logins for a username block it for 15 minutes, and sessions end after 2 idle hours. `seed` refuses to run when `SESSION_COOKIE_SECURE=1`, because demo accounts have known passwords.
+
+To load accounts into a hosted database such as Render's, set `DATABASE_URL` to its external URL in your shell and run the same command on your own machine, because the file is not deployed.
 
 To reset the data, drop and recreate the database (PostgreSQL) or delete `instance/scheduler.db` (SQLite).
 
@@ -45,7 +59,7 @@ app/
     scheduler.py    constraint-based timetable generator (pure Python)
     seed.py         demo data (flask --app run seed)
   frontend/         what the user sees (no business rules)
-    auth.py         register / login / role checks
+    auth.py         login / role checks
     coordinator.py  coordinator pages
     instructor.py   instructor pages + .ics export
     templates/      Jinja HTML templates
@@ -65,13 +79,12 @@ All settings come from environment variables. `run.py` loads them from `.env`. C
 | Env var | Required | Purpose | Default |
 |---|---|---|---|
 | `SECRET_KEY` | yes | Signs the login session cookie. Generate with `python -c "import secrets; print(secrets.token_hex(32))"` | none |
-| `COORDINATOR_CODE` | yes | Access code for registering a coordinator | none |
 | `FLASK_DEBUG` | no | `1` for auto-reload and debugger (local only) | `0` |
 | `DATABASE_URL` | no | Database connection string, e.g. `postgresql://scheduler:PASSWORD@localhost:5432/scheduler` | SQLite file `instance/scheduler.db` |
 | `DEMO_PASSWORD` | no | Password of the seeded demo accounts | `password` |
 | `SESSION_COOKIE_SECURE` | no | `1` when served over HTTPS | `0` |
 
-All forms are protected against CSRF (Flask-WTF), and the session cookie uses `SameSite=Lax`.
+All forms are protected against CSRF (Flask-WTF), the session cookie uses `SameSite=Lax`, and every response carries security headers, including a Content-Security-Policy that forbids inline scripts. Put page scripts in `app/frontend/static/app.js`.
 
 ## Database
 

@@ -10,6 +10,7 @@ Hard constraints (must always hold):
   H4  an instructor teaches at most one session per time slot
   H5  two sessions of the same course never share a time slot
   H6  courses marked "no overlap" never share a time slot
+  H7  an instructor is never scheduled in a slot they marked unavailable
 
 Soft constraints (each violation adds one penalty point):
   S1  session falls on one of the instructor's preferred days
@@ -44,6 +45,7 @@ class SessionSpec:
     venue_pref: str | None = None
     preferred_days: frozenset = frozenset()
     preferred_period: str = "any"
+    unavailable: frozenset = frozenset()  # (day, hour) slots the instructor cannot teach
 
 
 @dataclass(frozen=True)
@@ -122,6 +124,8 @@ class Timetable:
             reasons.append("Lectures cannot be held in a lab room")
 
         when = slot_label(day, hour)
+        if (day, hour) in session.unavailable:
+            reasons.append(f"The instructor of {session.course_code} is unavailable at {when}")
         for other in self._by_slot[(day, hour)]:
             o = other.session
             if other.room.id == room.id:
@@ -175,15 +179,17 @@ def check_capacity(problem):
 
     n_slots = len(problem.slots)
     per_instructor = defaultdict(int)
+    free_slots = {}
     per_course = defaultdict(list)
     for s in problem.sessions:
         if s.instructor_id is not None:
             per_instructor[s.instructor_id] += 1
+            free_slots[s.instructor_id] = n_slots - len(s.unavailable)
         per_course[s.course_id].append(s)
     for instructor_id, count in per_instructor.items():
-        if count > n_slots:
-            raise SchedulingError(f"An instructor has {count} weekly sessions but the week "
-                                  f"only has {n_slots} time slots.")
+        if count > free_slots[instructor_id]:
+            raise SchedulingError(f"An instructor has {count} weekly sessions but only "
+                                  f"{free_slots[instructor_id]} available time slots.")
     for sessions in per_course.values():
         if len(sessions) > n_slots:
             raise SchedulingError(f"{sessions[0].course_code} has {len(sessions)} weekly "

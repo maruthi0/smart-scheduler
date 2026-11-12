@@ -13,6 +13,13 @@ def test_seed_command_creates_schedulable_demo(app):
     assert schedule.soft_penalty <= 2
 
 
+def test_seed_refuses_deployed_site(app):
+    app.config["SESSION_COOKIE_SECURE"] = True
+    result = app.test_cli_runner().invoke(args=["seed"])
+    assert result.exit_code != 0
+    assert User.query.count() == 0
+
+
 def test_seed_refuses_non_empty_database(app, instructor):
     result = app.test_cli_runner().invoke(args=["seed"])
     assert result.exit_code != 0

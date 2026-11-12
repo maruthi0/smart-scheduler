@@ -1,17 +1,21 @@
 """Business logic. Routes stay thin and delegate here; the timetabling
 algorithm itself lives in scheduler.py and knows nothing about the database."""
+import secrets
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 
 from . import scheduler
 from .models import (
-    ACCEPTED, ARCHIVED, DRAFT, INSTRUCTOR, PENDING, PERIODS, PUBLISHED, REJECTED, ROLES,
-    ROOM_TYPES, ChangeRequest, Course, CoursePreference, NoOverlap, Room, Schedule,
-    ScheduledSession, User, db,
+    ACCEPTED, ARCHIVED, DRAFT, INSTRUCTOR, LOCKED_HASH, PENDING, PERIODS, PUBLISHED, REJECTED,
+    ROLES, ROOM_TYPES, ChangeRequest, Course, CoursePreference, LoginAttempt, NoOverlap, Room,
+    Schedule, ScheduledSession, Unavailability, User, db,
 )
 from .scheduler import DAYS, HOURS, SchedulingError  # noqa: F401 (re-exported)
 
 MAX_HOURS_PER_WEEK = 10
+MAX_LOGIN_FAILURES = 5
+LOGIN_LOCKOUT = timedelta(minutes=15)
+PASSWORD_LENGTHS = (10, 128)
 
 
 class ValidationError(Exception):
@@ -24,6 +28,10 @@ class NotFoundError(Exception):
 
 class PermissionDenied(Exception):
     """User may not act on this record."""
+
+
+class TooManyAttempts(Exception):
+    """Too many failed logins for this username."""
 
 
 class ConflictError(Exception):
@@ -75,7 +83,7 @@ def _date(value, name):
 
 # --- Users -----------------------------------------------------------------
 
-def register_user(username, password, role, full_name=""):
+def _valid_account(username, password, role):
     username = (username or "").strip()
     if len(username) < 3:
         raise ValidationError("Username must be at least 3 characters.")
@@ -83,6 +91,11 @@ def register_user(username, password, role, full_name=""):
         raise ValidationError("Password must be at least 6 characters.")
     if role not in ROLES:
         raise ValidationError("Choose a valid role.")
+    return username
+
+
+def register_user(username, password, role, full_name=""):
+    username = _valid_account(username, password, role)
     if User.query.filter_by(username=username).first():
         raise ValidationError("Username is already taken.")
     user = User(username=username, role=role,
@@ -94,14 +107,111 @@ def register_user(username, password, role, full_name=""):
 
 
 def authenticate(username, password):
-    user = User.query.filter_by(username=(username or "").strip()).first()
+    """Return the user, or None if the login is wrong. Raises TooManyAttempts when throttled."""
+    # shortcut: counts per username, so someone can briefly lock out a known username;
+    # also count per client address if that becomes a problem.
+    username = (username or "").strip()[:80]
+    now = datetime.now()
+    attempt = db.session.get(LoginAttempt, username)
+    if attempt and now - attempt.last_failure >= LOGIN_LOCKOUT:
+        attempt.failures = 0
+    if attempt and attempt.failures >= MAX_LOGIN_FAILURES:
+        raise TooManyAttempts("Too many failed attempts. Try again in 15 minutes.")
+
+    user = User.query.filter_by(username=username).first()
     if user and user.check_password(password or ""):
+        if attempt:
+            db.session.delete(attempt)
+            db.session.commit()
         return user
+
+    # Old rows are removed here so guessing random usernames cannot grow the table forever.
+    LoginAttempt.query.filter(LoginAttempt.last_failure < now - LOGIN_LOCKOUT,
+                              LoginAttempt.username != username).delete()
+    if attempt is None:
+        attempt = LoginAttempt(username=username, failures=0)
+        db.session.add(attempt)
+    attempt.failures += 1
+    attempt.last_failure = now
+    db.session.commit()
     return None
+
+
+def change_password(user, current, new, confirm):
+    if not user.check_password(current or ""):
+        raise ValidationError("Your current password is incorrect.")
+    low, high = PASSWORD_LENGTHS
+    if not low <= len(new or "") <= high:
+        raise ValidationError(f"The new password must be {low} to {high} characters long.")
+    if new != confirm:
+        raise ValidationError("The two new passwords do not match.")
+    if new == current:
+        raise ValidationError("The new password must be different from the current one.")
+    user.set_password(new)
+    user.must_change_password = False
+    db.session.commit()
+
+
+def accounts():
+    return (User.query.filter(User.password_hash != LOCKED_HASH)
+            .order_by(User.role, User.username).all())
+
+
+def reset_password(coordinator, user_id):
+    """Give an account a temporary password. Returns (user, temporary password)."""
+    user = _get(User, user_id)
+    if user.id == coordinator.id:
+        raise ValidationError("Use the Password page to change your own password.")
+    if user.is_locked:
+        raise ValidationError(f"{user.username} is locked. Add them to the accounts file instead.")
+    temporary = secrets.token_urlsafe(12)
+    user.set_password(temporary)
+    user.must_change_password = True
+    db.session.commit()
+    return user, temporary
+
+
+def sync_accounts(rows, reset_passwords=False):
+    """Make these rows the only accounts that can log in. Returns the usernames locked.
+
+    Existing accounts keep the password they chose unless reset_passwords is set.
+    """
+    listed = {_valid_account(r.get("username"), r.get("password"), r.get("role")) for r in rows}
+    if not listed:
+        raise ValidationError("The accounts file lists no accounts.")
+    for row in rows:
+        username = row["username"].strip()
+        user = User.query.filter_by(username=username).first()
+        is_new = user is None
+        if is_new:
+            user = User(username=username)
+            db.session.add(user)
+        user.role = row["role"]
+        user.full_name = _text(row.get("full_name"), "Full name", 120, required=False)
+        if is_new or reset_passwords or user.is_locked:
+            user.set_password(row["password"])
+            user.must_change_password = True
+    locked = User.query.filter(User.username.notin_(listed)).order_by(User.username).all()
+    for user in locked:
+        user.password_hash = LOCKED_HASH  # their courses and history stay intact
+    db.session.commit()
+    return [user.username for user in locked]
 
 
 def instructors():
     return User.query.filter_by(role=INSTRUCTOR).order_by(User.full_name, User.username).all()
+
+
+def workloads():
+    return [{"user": user, "assigned": user.assigned_hours, "left": user.hours_left}
+            for user in instructors()]
+
+
+def set_max_hours(user_id, max_hours):
+    user = _instructor_or_none(user_id)
+    user.max_hours = _int(max_hours, "Hour limit", 0, 60)
+    db.session.commit()
+    return user
 
 
 # --- Rooms, courses and constraints (coordinator) --------------------------
@@ -136,14 +246,19 @@ def _instructor_or_none(instructor_id):
     return user
 
 
-def create_course(code, title, enrollment, lecture_hours=3, lab_hours=0, instructor_id=None):
-    code = _text(code, "Course code", 20).upper()
-    title = _text(title, "Course title", 120)
-    enrollment = _int(enrollment, "Enrollment", 1, 2000)
+def _hours(lecture_hours, lab_hours):
     lecture_hours = _int(lecture_hours, "Lecture hours", 0, MAX_HOURS_PER_WEEK)
     lab_hours = _int(lab_hours, "Lab hours", 0, MAX_HOURS_PER_WEEK)
     if lecture_hours + lab_hours == 0:
         raise ValidationError("A course needs at least one lecture or lab hour.")
+    return lecture_hours, lab_hours
+
+
+def create_course(code, title, enrollment, lecture_hours=3, lab_hours=0, instructor_id=None):
+    code = _text(code, "Course code", 20).upper()
+    title = _text(title, "Course title", 120)
+    enrollment = _int(enrollment, "Enrollment", 1, 2000)
+    lecture_hours, lab_hours = _hours(lecture_hours, lab_hours)
     if Course.query.filter_by(code=code).first():
         raise ValidationError(f"Course {code} already exists.")
     course = Course(code=code, title=title, enrollment=enrollment, lecture_hours=lecture_hours,
@@ -156,6 +271,13 @@ def create_course(code, title, enrollment, lecture_hours=3, lab_hours=0, instruc
 def assign_instructor(course_id, instructor_id):
     course = _get(Course, course_id)
     course.instructor = _instructor_or_none(instructor_id)
+    db.session.commit()
+    return course
+
+
+def set_course_hours(course_id, lecture_hours, lab_hours):
+    course = _get(Course, course_id)
+    course.lecture_hours, course.lab_hours = _hours(lecture_hours, lab_hours)
     db.session.commit()
     return course
 
@@ -200,10 +322,6 @@ def instructor_course(instructor, course_id):
 
 def save_preference(instructor, course_id, data):
     course = instructor_course(instructor, course_id)
-    lecture_hours = _int(data.get("lecture_hours"), "Lecture hours", 0, MAX_HOURS_PER_WEEK)
-    lab_hours = _int(data.get("lab_hours"), "Lab hours", 0, MAX_HOURS_PER_WEEK)
-    if lecture_hours + lab_hours == 0:
-        raise ValidationError("A course needs at least one lecture or lab hour.")
     midterms = _int(data.get("midterms", 0), "Number of midterms", 0, 5)
     venue = data.get("venue_type") or None
     if venue is not None and (venue not in ROOM_TYPES or venue == "lab"):
@@ -215,8 +333,6 @@ def save_preference(instructor, course_id, data):
                    for d in data.get("preferred_days") or []})
 
     pref = course.preference or CoursePreference(course=course)
-    pref.lecture_hours = lecture_hours
-    pref.lab_hours = lab_hours
     pref.midterms = midterms
     pref.final_exam = str(data.get("final_exam", "")).lower() in ("on", "true", "1", "yes")
     pref.venue_type = venue
@@ -225,6 +341,22 @@ def save_preference(instructor, course_id, data):
     db.session.add(pref)
     db.session.commit()
     return pref
+
+
+def save_unavailability(instructor, slots):
+    """Replace the instructor's unavailable slots. Each slot is "day-hour", e.g. "0-9"."""
+    chosen = set()
+    for slot in slots:
+        day, _, hour = str(slot).partition("-")
+        chosen.add((_int(day, "Day", 0, len(DAYS) - 1), _int(hour, "Hour", HOURS[0], HOURS[-1])))
+    free = len(DAYS) * len(HOURS) - len(chosen)
+    if free < instructor.assigned_hours:
+        raise ValidationError(f"You teach {instructor.assigned_hours} hours a week, "
+                              f"so at least that many time slots must stay free.")
+    instructor.unavailable.clear()
+    db.session.flush()
+    instructor.unavailable.extend(Unavailability(day=d, hour=h) for d, h in sorted(chosen))
+    db.session.commit()
 
 
 # --- Schedule generation and editing ---------------------------------------
@@ -241,6 +373,7 @@ def _session_spec(course, kind, index):
         venue_pref=pref.venue_type if pref else None,
         preferred_days=frozenset(pref.days) if pref else frozenset(),
         preferred_period=pref.preferred_period if pref else "any",
+        unavailable=course.instructor.blocked_slots if course.instructor else frozenset(),
     )
 
 
@@ -252,8 +385,8 @@ def build_problem():
     sessions = []
     for course in Course.query.order_by(Course.id):
         sessions += [_session_spec(course, "lecture", i)
-                     for i in range(course.effective_lecture_hours)]
-        sessions += [_session_spec(course, "lab", i) for i in range(course.effective_lab_hours)]
+                     for i in range(course.lecture_hours)]
+        sessions += [_session_spec(course, "lab", i) for i in range(course.lab_hours)]
     rooms = [_room_spec(r) for r in Room.query.order_by(Room.id)]
     return scheduler.Problem(rooms, sessions, _no_overlap_pairs())
 
@@ -392,8 +525,8 @@ def respond_change_request(request_id, accept, response=""):
 # --- Calendar export -------------------------------------------------------
 
 def _ics_text(value):
-    return (value.replace("\\", "\\\\").replace(";", "\\;")
-            .replace(",", "\\,").replace("\n", "\\n"))
+    return (value.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
+            .replace("\r", "").replace("\n", "\\n"))
 
 
 def instructor_calendar(instructor, schedule):

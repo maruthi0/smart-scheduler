@@ -1,21 +1,33 @@
-"""Registration, login and logout, plus role-based access helpers."""
-import hmac
+"""Login and logout, plus role-based access helpers. Accounts are pre-assigned."""
+from flask import Blueprint, abort, flash, g, redirect, render_template, request, session, url_for
 
-from flask import (
-    Blueprint, abort, current_app, flash, g, redirect, render_template, request, session,
-    url_for,
-)
-
-from ..backend.models import COORDINATOR, ROLES, User, db
-from ..backend.services import ValidationError, authenticate, register_user
+from ..backend import services
+from ..backend.models import User, db
 
 bp = Blueprint("auth", __name__)
+
+ALLOWED_BEFORE_PASSWORD_CHANGE = ("auth.change_password", "auth.logout", "static")
 
 
 @bp.before_app_request
 def load_current_user():
     user_id = session.get("user_id")
-    g.user = db.session.get(User, user_id) if user_id else None
+    user = db.session.get(User, user_id) if user_id else None
+    if user and session.get("token") != user.session_token:
+        session.clear()
+        user = None
+    g.user = user
+    if (user and user.must_change_password
+            and request.endpoint not in ALLOWED_BEFORE_PASSWORD_CHANGE):
+        return redirect(url_for("auth.change_password"))
+    return None
+
+
+def _start_session(user):
+    session.clear()
+    session["user_id"] = user.id
+    session["token"] = user.session_token
+    session.permanent = True
 
 
 def require_role(role):
@@ -36,38 +48,38 @@ def home():
     return redirect(url_for("instructor.dashboard"))
 
 
-@bp.route("/register", methods=["GET", "POST"])
-def register():
-    if request.method == "POST":
-        form = request.form
-        role = form.get("role")
-        code = (form.get("coordinator_code") or "").encode()
-        expected = current_app.config["COORDINATOR_CODE"].encode()
-        if role == COORDINATOR and not hmac.compare_digest(code, expected):
-            flash("Invalid coordinator access code.", "error")
-            return render_template("register.html", roles=ROLES, form=form)
-        try:
-            user = register_user(form.get("username"), form.get("password"), role,
-                                 form.get("full_name"))
-        except ValidationError as e:
-            flash(str(e), "error")
-            return render_template("register.html", roles=ROLES, form=form)
-        session.clear()
-        session["user_id"] = user.id
-        return redirect(url_for("auth.home"))
-    return render_template("register.html", roles=ROLES, form={})
-
-
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        user = authenticate(request.form.get("username"), request.form.get("password"))
+        try:
+            user = services.authenticate(request.form.get("username"),
+                                         request.form.get("password"))
+        except services.TooManyAttempts as e:
+            flash(str(e), "error")
+            return render_template("login.html"), 429
         if user:
-            session.clear()
-            session["user_id"] = user.id
+            _start_session(user)
             return redirect(url_for("auth.home"))
         flash("Invalid username or password.", "error")
     return render_template("login.html")
+
+
+@bp.route("/password", methods=["GET", "POST"])
+def change_password():
+    if g.user is None:
+        return redirect(url_for("auth.login"))
+    if request.method == "POST":
+        form = request.form
+        try:
+            services.change_password(g.user, form.get("current_password"),
+                                     form.get("new_password"), form.get("confirm_password"))
+        except services.ValidationError as e:
+            flash(str(e), "error")
+        else:
+            _start_session(g.user)  # the old token stopped matching when the password changed
+            flash("Your password was changed.", "success")
+            return redirect(url_for("auth.home"))
+    return render_template("change_password.html")
 
 
 @bp.route("/logout", methods=["POST"])

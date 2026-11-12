@@ -10,4 +10,5 @@ project_Docs/
 .env
 .env.*
 !.env.example
+usernames&passwords*
 graphify-out/

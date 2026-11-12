@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
 </head>
 <body class="{% block body_class %}{% endblock %}">
   <a class="skip-link" href="#content">Skip to content</a>
@@ -28,20 +29,20 @@
           {% else %}
             <a href="{{ url_for('instructor.dashboard') }}" {% if ep in ('instructor.dashboard', 'instructor.preferences') %}aria-current="page"{% endif %}>My courses</a>
             <a href="{{ url_for('instructor.schedule') }}" {% if ep == 'instructor.schedule' %}aria-current="page"{% endif %}>Timetable</a>
+            <a href="{{ url_for('instructor.availability') }}" {% if ep == 'instructor.availability' %}aria-current="page"{% endif %}>Availability</a>
           {% endif %}
         </nav>
         <div class="account">
           {% set words = g.user.display_name.replace('Dr.', '').replace('(', '').replace(')', '').split() %}
           <span class="who"><span class="avatar" aria-hidden="true">{% for w in words[:2] %}{{ w[0]|upper }}{% endfor %}</span>{{ g.user.display_name }}<span class="badge role">{{ g.user.role }}</span></span>
+          <a href="{{ url_for('auth.change_password') }}" {% if ep == 'auth.change_password' %}aria-current="page"{% endif %}>Password</a>
           <form method="post" action="{{ url_for('auth.logout') }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="link">Log out</button>
           </form>
         </div>
       {% else %}
         <nav class="nav" aria-label="Main">
-          <a href="{{ url_for('auth.login') }}" {% if request.endpoint == 'auth.login' %}aria-current="page"{% endif %}>Log in</a>
-          <a href="{{ url_for('auth.register') }}" {% if request.endpoint == 'auth.register' %}aria-current="page"{% endif %}>Register</a>
-        </nav>
+          <a href="{{ url_for('auth.login') }}" {% if request.endpoint == 'auth.login' %}aria-current="page"{% endif %}>Log in</a>        </nav>
       {% endif %}
     </div>
   </header>

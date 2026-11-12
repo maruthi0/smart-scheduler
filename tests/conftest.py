@@ -14,7 +14,6 @@ def app():
         # Set TEST_DATABASE_URL to run the suite against PostgreSQL instead.
         "SQLALCHEMY_DATABASE_URI": os.environ.get("TEST_DATABASE_URL", "sqlite:///:memory:"),
         "SECRET_KEY": "test",
-        "COORDINATOR_CODE": "letmein",
         "WTF_CSRF_ENABLED": False,  # CSRF itself is covered in test_security.py
     })
     with app.app_context():

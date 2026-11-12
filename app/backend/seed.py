@@ -6,6 +6,8 @@ from . import services
 
 
 def seed_demo():
+    if current_app.config["SESSION_COOKIE_SECURE"]:
+        raise SystemExit("Demo data has known passwords, so it is not allowed on a deployed site.")
     if User.query.first():
         raise SystemExit("Database is not empty; delete instance/scheduler.db first.")
     password = current_app.config["DEMO_PASSWORD"]
@@ -41,11 +43,11 @@ def seed_demo():
     services.add_no_overlap(courses["CS5565"].id, courses["CS5590"].id)
 
     services.save_preference(smith, courses["CS5551"].id, {
-        "lecture_hours": 3, "lab_hours": 0, "midterms": 1, "final_exam": "on",
+        "midterms": 1, "final_exam": "on",
         "venue_type": "lecture_hall", "preferred_days": [0, 2, 4],
         "preferred_period": "morning"})
     services.save_preference(lee, courses["CS5590"].id, {
-        "lecture_hours": 3, "lab_hours": 0, "midterms": 2, "final_exam": "on",
+        "midterms": 2, "final_exam": "on",
         "venue_type": "theater", "preferred_days": [1, 3], "preferred_period": "afternoon"})
     db.session.commit()
     return Course.query.count()
