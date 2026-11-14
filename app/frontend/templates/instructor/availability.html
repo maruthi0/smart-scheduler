@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Availability · Course Scheduler{% endblock %}
+{% block hero %}
+<div class="page-head">
+  <div>
+    <h1>Availability</h1>
+    <p>Tick the times you cannot teach. The scheduler will never place your sessions there. This applies the next time a schedule is generated, and does not change a schedule that is already published.</p>
+  </div>
+</div>
+{% endblock %}
+{% block content %}
+<section class="card">
+  <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Start</th>{% for d in days %}<th>{{ d }}</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for h in hours %}
+        <tr>
+          <td class="mono">{{ '%02d:00' % h }}</td>
+          {% for d in days %}
+            <td><input type="checkbox" name="unavailable" value="{{ loop.index0 }}-{{ h }}" {% if (loop.index0, h) in blocked %}checked{% endif %} aria-label="Unavailable {{ d }} {{ '%02d:00' % h }}"></td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="button">Save availability</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

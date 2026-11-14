@@ -1,5 +1,5 @@
 """Integration tests through the Flask test client (HTTP -> service -> DB)."""
-from app.models import ChangeRequest, Course, Room, Schedule
+from app.backend.models import DEFAULT_MAX_HOURS, ChangeRequest, Course, Room, Schedule, User
 from tests.conftest import login
 
 
@@ -9,26 +9,12 @@ def test_home_redirects_to_login(client):
     assert "/login" in client.get("/").headers["Location"]
 
 
-def test_register_instructor(client, app):
-    resp = client.post("/register", data={"username": "amy", "password": "secret123",
-                                          "full_name": "Dr. Amy", "role": "instructor"},
-                       follow_redirects=True)
-    assert b"My courses" in resp.data
-
-
-def test_register_coordinator_requires_code(client, app):
-    data = {"username": "boss", "password": "secret123", "role": "coordinator"}
-    resp = client.post("/register", data={**data, "coordinator_code": "wrong"})
-    assert b"Invalid coordinator access code" in resp.data
-    resp = client.post("/register", data={**data, "coordinator_code": "letmein"},
-                       follow_redirects=True)
-    assert b"Generate a semester schedule" in resp.data
-
-
-def test_register_shows_validation_error(client, app):
-    resp = client.post("/register", data={"username": "a", "password": "secret123",
-                                          "role": "instructor"})
-    assert b"at least 3 characters" in resp.data
+def test_registration_is_removed(client, app):
+    assert client.get("/register").status_code == 404
+    data = {"username": "amy", "password": "secret123", "role": "coordinator"}
+    assert client.post("/register", data=data).status_code == 404
+    assert User.query.count() == 0
+    assert b"Register" not in client.get("/login").data
 
 
 def test_bad_login(client, instructor):
@@ -44,6 +30,16 @@ def test_logout(instructor_client):
 def test_instructor_cannot_access_coordinator_pages(instructor_client):
     assert instructor_client.get("/coordinator/").status_code == 403
     assert instructor_client.post("/coordinator/rooms", data={}).status_code == 403
+
+
+def test_instructor_cannot_set_course_or_instructor(instructor_client, catalog, instructor):
+    course = catalog["ml"]
+    before = (course.lecture_hours, course.lab_hours, course.instructor_id)
+    assert instructor_client.post(f"/coordinator/courses/{course.id}/hours", data={
+        "lecture_hours": "9", "lab_hours": "0"}).status_code == 403
+    assert instructor_client.post(f"/coordinator/courses/{course.id}/instructor", data={
+        "instructor_id": str(instructor.id)}).status_code == 403
+    assert (course.lecture_hours, course.lab_hours, course.instructor_id) == before
 
 
 def test_coordinator_cannot_access_instructor_pages(coord_client):
@@ -82,6 +78,76 @@ def test_coordinator_manages_courses_and_rules(coord_client, instructor):
     assert a.instructor is None
     coord_client.post(f"/coordinator/courses/{b.id}/delete")
     assert Course.query.count() == 1
+
+
+def test_coordinator_edits_course_hours(coord_client, catalog):
+    url = f"/coordinator/courses/{catalog['se'].id}/hours"
+    resp = coord_client.post(url, data={"lecture_hours": "4", "lab_hours": "1"},
+                             follow_redirects=True)
+    assert b"Hours updated" in resp.data
+    assert (catalog["se"].lecture_hours, catalog["se"].lab_hours) == (4, 1)
+    resp = coord_client.post(url, data={"lecture_hours": "0", "lab_hours": "0"},
+                             follow_redirects=True)
+    assert b"at least one lecture or lab hour" in resp.data
+
+
+def test_coordinator_sets_hour_limit(coord_client, catalog, instructor):
+    url = f"/coordinator/instructors/{instructor.id}/max-hours"
+    resp = coord_client.post(url, data={"max_hours": "2"}, follow_redirects=True)
+    assert b"Hour limit updated" in resp.data
+    assert b"over by 1" in resp.data  # smith is assigned 3 hours
+    resp = coord_client.post(url, data={"max_hours": "61"}, follow_redirects=True)
+    assert b"Hour limit must be between" in resp.data
+    assert instructor.max_hours == 2
+
+
+def test_coordinator_warned_when_changes_exceed_limit(coord_client, catalog, instructor):
+    instructor.max_hours = 3  # smith is assigned exactly 3 hours
+    page = coord_client.get("/coordinator/")
+    assert b"Dr. Smith (0 h left)" in page.data
+    resp = coord_client.post(f"/coordinator/courses/{catalog['se'].id}/hours",
+                             data={"lecture_hours": "3", "lab_hours": "0"}, follow_redirects=True)
+    assert b"Hours updated" in resp.data and b"over their limit by 1" in resp.data
+    resp = coord_client.post(f"/coordinator/courses/{catalog['ml'].id}/instructor",
+                             data={"instructor_id": str(instructor.id)}, follow_redirects=True)
+    assert b"over their limit by 4" in resp.data  # the save itself still goes through
+    assert catalog["ml"].instructor == instructor
+
+
+def test_no_limit_warning_within_limit_or_on_failure(coord_client, catalog):
+    url = f"/coordinator/courses/{catalog['se'].id}/hours"
+    resp = coord_client.post(url, data={"lecture_hours": "3", "lab_hours": "0"},
+                             follow_redirects=True)
+    assert b"over their limit" not in resp.data
+    resp = coord_client.post(url, data={"lecture_hours": "0", "lab_hours": "0"},
+                             follow_redirects=True)
+    assert b"over their limit" not in resp.data
+
+
+def test_instructor_saves_availability(instructor_client, instructor):
+    url = "/instructor/availability"
+    assert b'value="0-8"' in instructor_client.get(url).data
+    resp = instructor_client.post(url, data={"unavailable": ["0-8", "4-17"]},
+                                  follow_redirects=True)
+    assert b"availability was saved" in resp.data
+    assert instructor.blocked_slots == {(0, 8), (4, 17)}
+    assert resp.data.count(b"checked") == 2
+    resp = instructor_client.post(url, data={"unavailable": ["9-9"]}, follow_redirects=True)
+    assert b"Day must be between" in resp.data
+    assert instructor.blocked_slots == {(0, 8), (4, 17)}
+
+
+def test_coordinator_cannot_use_availability_page(coord_client):
+    assert coord_client.get("/instructor/availability").status_code == 403
+
+
+def test_instructor_sees_every_workload_but_cannot_edit(instructor_client, catalog, instructor):
+    page = instructor_client.get("/instructor/").get_data(as_text=True)
+    assert "Dr. Smith" in page and "Dr. Jones" in page and "Instructor workload" in page
+    assert 'name="max_hours"' not in page
+    assert instructor_client.post(f"/coordinator/instructors/{instructor.id}/max-hours",
+                                  data={"max_hours": "60"}).status_code == 403
+    assert instructor.max_hours == DEFAULT_MAX_HOURS
 
 
 def test_generate_view_publish_schedule(coord_client, catalog):
@@ -174,9 +240,10 @@ def test_instructor_dashboard_without_schedule(instructor_client, catalog):
 
 def test_instructor_submits_preferences(instructor_client, catalog):
     url = f"/instructor/courses/{catalog['se'].id}/preferences"
-    assert instructor_client.get(url).status_code == 200
+    page = instructor_client.get(url)
+    assert page.status_code == 200 and b'name="lecture_hours"' not in page.data
     resp = instructor_client.post(url, data={
-        "lecture_hours": "3", "lab_hours": "0", "midterms": "2", "final_exam": "on",
+        "midterms": "2", "final_exam": "on",
         "venue_type": "theater", "preferred_days": ["0", "2"], "preferred_period": "morning",
     }, follow_redirects=True)
     assert b"Preferences for CS5551 saved" in resp.data
@@ -185,8 +252,8 @@ def test_instructor_submits_preferences(instructor_client, catalog):
 
 def test_instructor_preference_validation_shown(instructor_client, catalog):
     resp = instructor_client.post(f"/instructor/courses/{catalog['se'].id}/preferences",
-                                  data={"lecture_hours": "0", "lab_hours": "0"})
-    assert b"at least one lecture or lab hour" in resp.data
+                                  data={"preferred_period": "night"})
+    assert b"valid time of day" in resp.data
 
 
 def test_instructor_cannot_edit_others_preferences(instructor_client, catalog):
@@ -216,3 +283,15 @@ def test_instructor_downloads_calendar(instructor_client, published):
     assert resp.mimetype == "text/calendar"
     assert "attachment" in resp.headers["Content-Disposition"]
     assert b"BEGIN:VEVENT" in resp.data
+
+
+def test_error_pages_are_rendered(coord_client):
+    resp = coord_client.get("/coordinator/schedules/999")
+    assert resp.status_code == 404 and b"Error 404" in resp.data
+    resp = coord_client.get("/no-such-page")
+    assert resp.status_code == 404 and b"Page not found" in resp.data
+
+
+def test_forbidden_page_is_rendered(instructor_client):
+    resp = instructor_client.get("/coordinator/")
+    assert resp.status_code == 403 and b"No access" in resp.data

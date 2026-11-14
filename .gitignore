@@ -6,3 +6,9 @@ instance/
 .pytest_cache/
 .coverage
 htmlcov/
+project_Docs/
+.env
+.env.*
+!.env.example
+usernames&passwords*
+graphify-out/

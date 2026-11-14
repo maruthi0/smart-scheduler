@@ -1,6 +1,6 @@
 """The demo data used in the sprint video must always produce a valid schedule."""
-from app import services
-from app.models import User
+from app.backend import services
+from app.backend.models import User
 
 
 def test_seed_command_creates_schedulable_demo(app):
@@ -11,6 +11,13 @@ def test_seed_command_creates_schedulable_demo(app):
     schedule = services.generate_schedule("Fall 2026", "2026-08-24", "2026-12-11")
     assert len(schedule.sessions) == 19
     assert schedule.soft_penalty <= 2
+
+
+def test_seed_refuses_deployed_site(app):
+    app.config["SESSION_COOKIE_SECURE"] = True
+    result = app.test_cli_runner().invoke(args=["seed"])
+    assert result.exit_code != 0
+    assert User.query.count() == 0
 
 
 def test_seed_refuses_non_empty_database(app, instructor):

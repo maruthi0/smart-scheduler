@@ -1,0 +1,28 @@
+{# Left side of the sign-in pages: what the app does, and a slice of the weekly grid it produces.
+   The grid is an illustration (sample sessions), not live data. #}
+{% set week = {
+  (0, 0): ('CS5551', 'lecture', 'Flarsheim 310'), (2, 0): ('CS5551', 'lecture', 'Flarsheim 310'),
+  (1, 1): ('CS5520', 'lab', 'Linda Hall Lab A'), (3, 1): ('CS5590', 'lecture', 'Haag 201'),
+  (4, 2): ('CS5592', 'lecture', 'Flarsheim 312'), (1, 2): ('CS5565', 'lecture', 'Royall 105'),
+  (0, 3): ('CS5530', 'lab', 'Linda Hall Lab B'), (3, 3): ('CS5551', 'lecture', 'Flarsheim 310'),
+} %}
+<div class="auth-aside">
+  <h1 class="display">Fifty slots. <span>Zero clashes.</span></h1>
+  <p class="lead">Coordinators generate the semester timetable from rooms, courses and instructor preferences. Instructors see their week and send change requests, without the email chains.</p>
+  <div class="mini-week" data-ui aria-hidden="true">
+    <span></span>
+    {% for d in ('Mon', 'Tue', 'Wed', 'Thu', 'Fri') %}<span class="day">{{ d }}</span>{% endfor %}
+    {% for hour in ('09:00', '10:00', '11:00', '13:00') %}
+      {% set row = loop.index0 %}
+      <span class="time">{{ hour }}</span>
+      {% for day in range(5) %}
+        {% set s = week.get((day, row)) %}
+        {% if s %}
+          <div class="session {{ s[1] }}"><strong>{{ s[0] }}</strong> {{ s[1] }}<small>{{ s[2] }}</small></div>
+        {% else %}
+          <span class="slot"></span>
+        {% endif %}
+      {% endfor %}
+    {% endfor %}
+  </div>
+</div>

@@ -1,0 +1,29 @@
+<section class="card">
+  <h2>Instructor workload</h2>
+  <p class="muted">Lecture and lab hours a week. Coordinators set each instructor's limit and assign the courses.</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Instructor</th><th class="num">Can work</th><th class="num">Assigned</th><th class="num">Hours left</th><th class="num">Unavailable slots</th></tr></thead>
+    <tbody>
+    {% for w in workloads %}
+      <tr>
+        <td>{{ w.user.display_name }}</td>
+        <td class="num">
+          {% if g.user.is_coordinator %}
+          <form method="post" action="{{ url_for('coordinator.set_max_hours', user_id=w.user.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input name="max_hours" type="number" min="0" max="60" required value="{{ w.user.max_hours }}" aria-label="{{ w.user.display_name }} hour limit">
+            <button class="link">Save</button>
+          </form>
+          {% else %}{{ w.user.max_hours }}{% endif %}
+        </td>
+        <td class="num">{{ w.assigned }}</td>
+        <td class="num">{% if w.left < 0 %}<span class="badge rejected">over by {{ -w.left }}</span>{% else %}{{ w.left }}{% endif %}</td>
+        <td class="num">{{ w.user.unavailable|length }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="muted">No instructors yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>

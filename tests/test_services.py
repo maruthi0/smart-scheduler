@@ -1,15 +1,16 @@
 """Unit tests for the service layer (business rules + database)."""
 import pytest
 
-from app import services
-from app.models import (
-    ACCEPTED, ARCHIVED, COORDINATOR, DRAFT, INSTRUCTOR, PUBLISHED, REJECTED, ScheduledSession,
+from app.backend import services
+from app.backend.models import (
+    ACCEPTED, ARCHIVED, COORDINATOR, DEFAULT_MAX_HOURS, DRAFT, INSTRUCTOR, PUBLISHED, REJECTED,
+    ScheduledSession, User,
 )
-from app.services import (
+from app.backend.services import (
     ConflictError, NotFoundError, PermissionDenied, SchedulingError, ValidationError,
 )
 
-PREFS = {"lecture_hours": 2, "lab_hours": 0, "midterms": 2, "final_exam": "on",
+PREFS = {"midterms": 2, "final_exam": "on",
          "venue_type": "lecture_hall", "preferred_days": ["1", "3"],
          "preferred_period": "afternoon"}
 
@@ -105,6 +106,141 @@ def test_cannot_delete_room_or_course_used_by_schedule(published, catalog):
         services.delete_course(catalog["se"].id)
 
 
+# --- Pre-assigned accounts -------------------------------------------------
+
+ACCOUNTS = [
+    {"username": "smith", "password": "new-pass-1", "role": "instructor", "full_name": "Dr. Smith"},
+    {"username": "boss", "password": "new-pass-2", "role": "coordinator", "full_name": "The Boss"},
+]
+
+
+def test_sync_accounts_creates_updates_and_locks(catalog, instructor, other_instructor):
+    assert services.sync_accounts(ACCOUNTS) == ["jones"]
+    boss = services.authenticate("boss", "new-pass-2")
+    assert boss.is_coordinator and boss.must_change_password
+    # An existing account keeps the password its owner chose.
+    assert services.authenticate("smith", "secret123") == instructor
+    assert not instructor.must_change_password
+    # Locked out, but the account and its courses are kept.
+    assert services.authenticate("jones", "secret123") is None
+    assert catalog["ml"].instructor == other_instructor
+
+
+def test_sync_accounts_can_reset_existing_passwords(app, instructor):
+    services.sync_accounts(ACCOUNTS, reset_passwords=True)
+    assert services.authenticate("smith", "new-pass-1") == instructor
+    assert services.authenticate("smith", "secret123") is None
+    assert instructor.must_change_password
+
+
+def test_sync_accounts_restores_a_locked_account(app, instructor):
+    services.sync_accounts([ACCOUNTS[1]])
+    assert instructor.is_locked
+    services.sync_accounts(ACCOUNTS)
+    assert services.authenticate("smith", "new-pass-1") == instructor
+
+
+@pytest.mark.parametrize("override,message", [
+    ({"username": "ab"}, "Username"),
+    ({"password": "short"}, "Password"),
+    ({"role": "admin"}, "role"),
+])
+def test_sync_accounts_rejects_bad_row_without_changes(app, instructor, override, message):
+    with pytest.raises(ValidationError, match=message):
+        services.sync_accounts([ACCOUNTS[1], {**ACCOUNTS[0], **override}])
+    assert services.authenticate("smith", "secret123") == instructor
+    assert User.query.count() == 1
+
+
+def test_sync_accounts_refuses_empty_list(app, instructor):
+    with pytest.raises(ValidationError, match="no accounts"):
+        services.sync_accounts([])
+    assert services.authenticate("smith", "secret123") == instructor
+
+
+def test_load_accounts_command(app, instructor, tmp_path):
+    path = tmp_path / "accounts.csv"
+    path.write_text("username,password,full_name,role\nboss,new-pass-2,The Boss,coordinator\n",
+                    encoding="utf-8-sig")  # as Excel saves it
+    result = app.test_cli_runner().invoke(args=["load-accounts", str(path)])
+    assert "Loaded 1 account(s). Locked: smith." in result.output
+    assert "new-pass-2" not in result.output
+    assert services.authenticate("boss", "new-pass-2") is not None
+
+
+def test_load_accounts_command_reports_bad_file(app, instructor, tmp_path):
+    path = tmp_path / "accounts.csv"
+    path.write_text("username,password,full_name,role\nboss,short,The Boss,coordinator\n")
+    result = app.test_cli_runner().invoke(args=["load-accounts", str(path)])
+    assert result.exit_code != 0 and "Password must be" in result.output
+    assert services.authenticate("smith", "secret123") == instructor
+
+
+# --- Instructor workload ---------------------------------------------------
+
+def test_workloads_show_limit_assigned_and_left(catalog, instructor, other_instructor):
+    rows = {w["user"].username: w for w in services.workloads()}
+    assert (rows["smith"]["assigned"], rows["smith"]["left"]) == (3, DEFAULT_MAX_HOURS - 3)
+    assert (rows["jones"]["assigned"], rows["jones"]["left"]) == (3, DEFAULT_MAX_HOURS - 3)
+    services.set_max_hours(instructor.id, "2")
+    services.set_course_hours(catalog["ml"].id, "4", "1")
+    rows = {w["user"].username: w for w in services.workloads()}
+    assert rows["smith"]["left"] == -1
+    assert rows["jones"]["assigned"] == 5
+
+
+@pytest.mark.parametrize("value,message", [("61", "Hour limit"), ("many", "Hour limit")])
+def test_set_max_hours_validation(app, instructor, value, message):
+    with pytest.raises(ValidationError, match=message):
+        services.set_max_hours(instructor.id, value)
+    assert instructor.max_hours == DEFAULT_MAX_HOURS
+
+
+def test_set_max_hours_only_for_instructors(app, coordinator):
+    with pytest.raises(ValidationError, match="not an instructor"):
+        services.set_max_hours(coordinator.id, "5")
+
+
+# --- Instructor unavailability ---------------------------------------------
+
+def test_generate_never_uses_unavailable_slots(catalog, instructor):
+    # Every morning is blocked for smith, who would otherwise be placed there.
+    services.save_unavailability(instructor, [f"{d}-{h}" for d in range(5) for h in range(8, 12)])
+    schedule = services.generate_schedule("Fall 2026", "2026-08-24", "2026-12-11")
+    mine = [s for s in schedule.sessions if s.course.instructor_id == instructor.id]
+    assert len(mine) == 3 and all(s.hour >= 12 for s in mine)
+
+
+def test_move_session_rejects_unavailable_slot(published, catalog, instructor):
+    services.save_unavailability(instructor, ["4-17"])
+    s = _session(published, catalog["db"])
+    with pytest.raises(ConflictError, match="unavailable at Fri 17:00"):
+        services.move_session(published.id, s.id, s.room_id, 4, 17)
+
+
+def test_save_unavailability_replaces_previous_slots(app, instructor):
+    services.save_unavailability(instructor, ["0-9", "1-10"])
+    services.save_unavailability(instructor, ["1-10", "2-11"])
+    assert instructor.blocked_slots == {(1, 10), (2, 11)}
+    services.save_unavailability(instructor, [])
+    assert instructor.blocked_slots == frozenset()
+
+
+@pytest.mark.parametrize("slot,message", [("5-9", "Day"), ("0-18", "Hour"), ("junk", "Day")])
+def test_save_unavailability_validation(app, instructor, slot, message):
+    with pytest.raises(ValidationError, match=message):
+        services.save_unavailability(instructor, [slot])
+    assert instructor.blocked_slots == frozenset()
+
+
+def test_save_unavailability_keeps_enough_free_slots(catalog, instructor):
+    everything = [f"{d}-{h}" for d in range(5) for h in range(8, 18)]
+    with pytest.raises(ValidationError, match="must stay free"):  # smith teaches 3 hours
+        services.save_unavailability(instructor, everything)
+    services.save_unavailability(instructor, everything[3:])  # exactly 3 free is allowed
+    assert len(instructor.blocked_slots) == 47
+
+
 # --- Preferences -----------------------------------------------------------
 
 def test_save_preference(catalog, instructor):
@@ -117,10 +253,30 @@ def test_save_preference(catalog, instructor):
     assert pref2.id == pref.id and pref2.final_exam is False
 
 
-def test_preference_hours_override_course_defaults(catalog, instructor):
-    services.save_preference(instructor, catalog["se"].id, {**PREFS, "lecture_hours": 4})
-    assert catalog["se"].effective_lecture_hours == 4
-    assert catalog["se"].lecture_hours == 2
+def test_instructor_cannot_change_course_hours(catalog, instructor):
+    services.save_preference(instructor, catalog["se"].id,
+                             {**PREFS, "lecture_hours": 4, "lab_hours": 3})
+    assert (catalog["se"].lecture_hours, catalog["se"].lab_hours) == (2, 0)
+    schedule = services.generate_schedule("Fall 2026", "2026-08-24", "2026-12-11")
+    assert sum(s.course_id == catalog["se"].id for s in schedule.sessions) == 2
+
+
+def test_coordinator_sets_course_hours(catalog):
+    services.set_course_hours(catalog["se"].id, "3", "0")
+    assert (catalog["se"].lecture_hours, catalog["se"].lab_hours) == (3, 0)
+    schedule = services.generate_schedule("Fall 2026", "2026-08-24", "2026-12-11")
+    assert sum(s.course_id == catalog["se"].id for s in schedule.sessions) == 3
+
+
+@pytest.mark.parametrize("lecture,lab,message", [
+    ("0", "0", "at least one"),
+    ("11", "0", "Lecture hours"),
+    ("1", "many", "Lab hours"),
+])
+def test_set_course_hours_validation(catalog, lecture, lab, message):
+    with pytest.raises(ValidationError, match=message):
+        services.set_course_hours(catalog["se"].id, lecture, lab)
+    assert (catalog["se"].lecture_hours, catalog["se"].lab_hours) == (2, 0)
 
 
 def test_preference_hours_change_generated_session_count(catalog, instructor):
@@ -136,8 +292,6 @@ def test_instructor_cannot_set_preferences_for_others_course(catalog, instructor
 
 
 @pytest.mark.parametrize("override,message", [
-    ({"lecture_hours": 0, "lab_hours": 0}, "at least one"),
-    ({"lecture_hours": 11}, "Lecture hours"),
     ({"venue_type": "lab"}, "venue"),
     ({"preferred_period": "night"}, "time of day"),
     ({"preferred_days": ["7"]}, "Preferred day"),
@@ -257,8 +411,7 @@ def test_move_session_rejects_no_overlap_conflict(published, catalog):
 
 
 def test_move_session_updates_soft_penalty(published, catalog, instructor):
-    services.save_preference(instructor, catalog["db"].id, {**PREFS, "lecture_hours": 1,
-                                                            "preferred_days": ["0"]})
+    services.save_preference(instructor, catalog["db"].id, {**PREFS, "preferred_days": ["0"]})
     s = _session(published, catalog["db"])
     services.move_session(published.id, s.id, s.room_id, 4, 16)
     assert published.soft_penalty >= 1
@@ -333,6 +486,12 @@ def test_instructor_calendar(published, catalog, instructor):
     assert ics.count("BEGIN:VEVENT") == 3
     assert "CS5590" not in ics
     assert "RRULE:FREQ=WEEKLY;UNTIL=20261211T235959" in ics
+
+
+def test_calendar_text_cannot_add_lines(published, catalog, instructor):
+    catalog["db"].title = "Databases\r\nATTENDEE:evil@example.com"
+    ics = services.instructor_calendar(instructor, published)
+    assert "\r\nATTENDEE" not in ics
 
 
 def test_calendar_first_occurrence_on_correct_weekday(published, catalog, instructor):

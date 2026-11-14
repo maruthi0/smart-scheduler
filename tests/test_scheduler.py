@@ -1,7 +1,7 @@
 """Unit tests for the timetabling algorithm (no database or Flask involved)."""
 import pytest
 
-from app.scheduler import (
+from app.backend.scheduler import (
     HOURS, Placement, Problem, RoomSpec, SchedulingError, SessionSpec, Timetable, generate,
     room_suits,
 )
@@ -34,6 +34,30 @@ def hard_ok(result, no_overlap=()):
         assert tt.hard_violations(p.session, p.room, p.day, p.hour) == [], p
         tt.add(p)
     return True
+
+
+# --- Instructor unavailability (H7) ----------------------------------------
+
+def test_unavailable_slots_are_never_used():
+    blocked = frozenset((d, h) for d in range(5) for h in HOURS if h < 15)
+    sessions = [lecture(1, i, instructor=7, unavailable=blocked) for i in range(3)]
+    result = generate(Problem([HALL], sessions))
+    assert hard_ok(result)
+    assert all(p.hour >= 15 for p in result.placements)
+
+
+def test_unavailable_slot_is_a_hard_violation():
+    session = lecture(1, instructor=7, unavailable=frozenset({(0, 9)}))
+    assert Timetable().hard_violations(session, HALL, 1, 9) == []
+    reasons = Timetable().hard_violations(session, HALL, 0, 9)
+    assert reasons == ["The instructor of C1 is unavailable at Mon 09:00"]
+
+
+def test_too_little_availability_fails_fast():
+    blocked = frozenset((d, h) for d in range(5) for h in HOURS if (d, h) != (0, 8))
+    sessions = [lecture(1, i, instructor=7, unavailable=blocked) for i in range(2)]
+    with pytest.raises(SchedulingError, match="only 1 available time slots"):
+        generate(Problem([HALL], sessions))
 
 
 # --- Static room suitability (H1, H2) --------------------------------------
