@@ -99,6 +99,52 @@ def create_app(config=None):
             raise click.ClickException(str(e))
         click.echo(f"Loaded {len(rows)} account(s). Locked: {', '.join(locked) or 'none'}.")
 
+    def read_csv(path, required):
+        with open(path, newline="", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            missing = [column for column in required if column not in (reader.fieldnames or [])]
+            if missing:
+                raise click.ClickException(
+                    f"CSV is missing required column(s): {', '.join(missing)}.")
+            return list(reader)
+
+    @app.cli.command("import-instructors")
+    @click.argument("path", type=click.Path(exists=True, dir_okay=False))
+    def import_instructors_command(path):
+        """Add or update instructors from a CSV file."""
+        from .backend import services
+        try:
+            rows = read_csv(path, ("username", "password", "full_name", "max_hours"))
+            users = services.import_instructors(rows)
+        except services.ValidationError as e:
+            raise click.ClickException(str(e))
+        click.echo(f"Imported {len(users)} instructor(s).")
+
+    @app.cli.command("import-rooms")
+    @click.argument("path", type=click.Path(exists=True, dir_okay=False))
+    def import_rooms_command(path):
+        """Add or update rooms from a CSV file."""
+        from .backend import services
+        try:
+            rows = read_csv(path, ("name", "capacity", "room_type"))
+            rooms = services.import_rooms(rows)
+        except services.ValidationError as e:
+            raise click.ClickException(str(e))
+        click.echo(f"Imported {len(rooms)} room(s).")
+
+    @app.cli.command("import-courses")
+    @click.argument("path", type=click.Path(exists=True, dir_okay=False))
+    def import_courses_command(path):
+        """Add or update courses from a CSV file."""
+        from .backend import services
+        try:
+            rows = read_csv(path, ("code", "title", "enrollment", "lecture_hours",
+                                   "lab_hours", "instructor_username"))
+            courses = services.import_courses(rows)
+        except services.ValidationError as e:
+            raise click.ClickException(str(e))
+        click.echo(f"Imported {len(courses)} course(s).")
+
     with app.app_context():
         db.create_all()
         _add_missing_columns()

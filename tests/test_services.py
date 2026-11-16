@@ -4,7 +4,7 @@ import pytest
 from app.backend import services
 from app.backend.models import (
     ACCEPTED, ARCHIVED, COORDINATOR, DEFAULT_MAX_HOURS, DRAFT, INSTRUCTOR, PUBLISHED, REJECTED,
-    ScheduledSession, User,
+    Course, Room, ScheduledSession, User,
 )
 from app.backend.services import (
     ConflictError, NotFoundError, PermissionDenied, SchedulingError, ValidationError,
@@ -176,6 +176,69 @@ def test_load_accounts_command_reports_bad_file(app, instructor, tmp_path):
     assert services.authenticate("smith", "secret123") == instructor
 
 
+def test_import_instructors_adds_and_updates_rows(app, tmp_path):
+    path = tmp_path / "instructors.csv"
+    path.write_text(
+        "username,password,full_name,max_hours\n"
+        "newsmith,new-pass-1,New Smith,15\n",
+        encoding="utf-8",
+    )
+
+    result = app.test_cli_runner().invoke(args=["import-instructors", str(path)])
+
+    assert result.exit_code == 0
+    user = User.query.filter_by(username="newsmith").one()
+    assert user.full_name == "New Smith"
+    assert user.max_hours == 15
+    assert services.authenticate("newsmith", "new-pass-1") == user
+
+
+def test_import_rooms_and_courses_resolve_instructor(app, instructor, tmp_path):
+    rooms = tmp_path / "rooms.csv"
+    rooms.write_text("name,capacity,room_type\nHall C,80,lecture_hall\n", encoding="utf-8")
+    courses = tmp_path / "courses.csv"
+    courses.write_text(
+        "code,title,enrollment,lecture_hours,lab_hours,instructor_username\n"
+        "cs6000,Advanced Topics,40,2,1,smith\n",
+        encoding="utf-8",
+    )
+
+    assert app.test_cli_runner().invoke(args=["import-rooms", str(rooms)]).exit_code == 0
+    result = app.test_cli_runner().invoke(args=["import-courses", str(courses)])
+
+    assert result.exit_code == 0
+    assert Room.query.filter_by(name="Hall C").one().capacity == 80
+    course = Course.query.filter_by(code="CS6000").one()
+    assert course.instructor == instructor
+    assert (course.lecture_hours, course.lab_hours) == (2, 1)
+
+
+def test_import_courses_rejects_unknown_instructor_without_changes(app, tmp_path):
+    path = tmp_path / "courses.csv"
+    path.write_text(
+        "code,title,enrollment,lecture_hours,lab_hours,instructor_username\n"
+        "cs6000,Advanced Topics,40,2,1,missing\n",
+        encoding="utf-8",
+    )
+
+    result = app.test_cli_runner().invoke(args=["import-courses", str(path)])
+
+    assert result.exit_code != 0
+    assert "not an instructor" in result.output
+    assert Course.query.count() == 0
+
+
+def test_import_rooms_requires_expected_columns(app, tmp_path):
+    path = tmp_path / "rooms.csv"
+    path.write_text("name,capacity\nHall C,80\n", encoding="utf-8")
+
+    result = app.test_cli_runner().invoke(args=["import-rooms", str(path)])
+
+    assert result.exit_code != 0
+    assert "room_type" in result.output
+    assert Room.query.count() == 0
+
+
 # --- Instructor workload ---------------------------------------------------
 
 def test_workloads_show_limit_assigned_and_left(catalog, instructor, other_instructor):
@@ -279,11 +342,11 @@ def test_set_course_hours_validation(catalog, lecture, lab, message):
     assert (catalog["se"].lecture_hours, catalog["se"].lab_hours) == (2, 0)
 
 
-def test_preference_hours_change_generated_session_count(catalog, instructor):
+def test_preference_hours_do_not_change_generated_session_count(catalog, instructor):
     services.save_preference(instructor, catalog["se"].id, {**PREFS, "lecture_hours": 4})
     schedule = services.generate_schedule("Fall 2026", "2026-08-24", "2026-12-11")
     assert sum(session.course_id == catalog["se"].id and session.kind == "lecture"
-               for session in schedule.sessions) == 4
+               for session in schedule.sessions) == catalog["se"].lecture_hours
 
 
 def test_instructor_cannot_set_preferences_for_others_course(catalog, instructor):
@@ -408,6 +471,15 @@ def test_move_session_rejects_no_overlap_conflict(published, catalog):
     with pytest.raises(ConflictError, match="must not overlap"):
         services.move_session(published.id, db_session.id, available_room.id,
                               se_session.day, se_session.hour)
+
+
+def test_move_session_rejects_session_from_another_schedule(catalog):
+    first = services.generate_schedule("Fall 2026", "2026-08-24", "2026-12-11")
+    second = services.generate_schedule("Spring 2027", "2027-01-11", "2027-05-14")
+    session = first.sessions[0]
+
+    with pytest.raises(NotFoundError, match="not in this schedule"):
+        services.move_session(second.id, session.id, session.room_id, session.day, session.hour)
 
 
 def test_move_session_updates_soft_penalty(published, catalog, instructor):

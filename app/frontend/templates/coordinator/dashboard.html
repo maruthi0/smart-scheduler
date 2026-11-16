@@ -20,6 +20,26 @@
 {% endif %}
 
 <section class="card">
+  <h2>Import data from CSV</h2>
+  <p class="muted">Use UTF-8 CSV files. Existing records with the same username, room name or course code are updated.</p>
+  <form method="post" action="{{ url_for('coordinator.import_csv') }}" enctype="multipart/form-data" class="row-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Data type
+      <select name="import_type" required>
+        <option value="instructors">Instructors</option>
+        <option value="rooms">Rooms</option>
+        <option value="courses">Courses</option>
+      </select>
+    </label>
+    <label>CSV file <input type="file" name="file" accept=".csv,text/csv" required></label>
+    <button type="submit" class="button">Import CSV</button>
+  </form>
+  <p class="muted">Columns: instructors <code>username,password,full_name,max_hours</code>;
+    rooms <code>name,capacity,room_type</code>;
+    courses <code>code,title,enrollment,lecture_hours,lab_hours,instructor_username</code>.</p>
+</section>
+
+<section class="card">
   <h2>Generate a semester schedule</h2>
   <form method="post" action="{{ url_for('coordinator.generate') }}" class="row-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Semester <input name="semester" required placeholder="Fall 2026"></label>

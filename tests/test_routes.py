@@ -1,4 +1,7 @@
 """Integration tests through the Flask test client (HTTP -> service -> DB)."""
+import io
+
+from app.backend import services
 from app.backend.models import DEFAULT_MAX_HOURS, ChangeRequest, Course, Room, Schedule, User
 from tests.conftest import login
 
@@ -62,6 +65,34 @@ def test_coordinator_manages_rooms(coord_client):
     assert b"Capacity must be between" in resp.data
     room = Room.query.one()
     coord_client.post(f"/coordinator/rooms/{room.id}/delete")
+    assert Room.query.count() == 0
+
+
+def test_coordinator_imports_rooms_from_csv(coord_client):
+    response = coord_client.post("/coordinator/import", data={
+        "import_type": "rooms",
+        "file": (io.BytesIO(b"name,capacity,room_type\nHall CSV,80,lecture_hall\n"),
+                 "rooms.csv"),
+    }, content_type="multipart/form-data", follow_redirects=True)
+
+    assert response.status_code == 200
+    assert b"Imported 1 rooms" in response.data
+    assert Room.query.filter_by(name="Hall CSV").one().capacity == 80
+
+
+def test_instructor_cannot_import_csv(instructor_client):
+    response = instructor_client.get("/coordinator/import")
+
+    assert response.status_code == 403
+
+
+def test_coordinator_import_rejects_missing_csv_columns(coord_client):
+    response = coord_client.post("/coordinator/import", data={
+        "import_type": "rooms",
+        "file": (io.BytesIO(b"name,capacity\nHall CSV,80\n"), "rooms.csv"),
+    }, content_type="multipart/form-data", follow_redirects=True)
+
+    assert b"room_type" in response.data
     assert Room.query.count() == 0
 
 
@@ -283,8 +314,6 @@ def test_instructor_downloads_calendar(instructor_client, published):
     assert resp.mimetype == "text/calendar"
     assert "attachment" in resp.headers["Content-Disposition"]
     assert b"BEGIN:VEVENT" in resp.data
-
-
 def test_error_pages_are_rendered(coord_client):
     resp = coord_client.get("/coordinator/schedules/999")
     assert resp.status_code == 404 and b"Error 404" in resp.data
