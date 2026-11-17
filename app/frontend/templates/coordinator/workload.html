@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Instructor workload · Course Scheduler{% endblock %}
+{% block hero %}
+<div class="page-head">
+  <div>
+    <h1>Instructor workload</h1>
+    <p>Review assigned teaching hours and update each instructor's weekly limit.</p>
+  </div>
+  <dl class="stats"><div><dt>Instructors</dt><dd>{{ workloads|length }}</dd></div></dl>
+</div>
+{% endblock %}
+{% block content %}
+{% include "_workload.html" %}
+{% endblock %}

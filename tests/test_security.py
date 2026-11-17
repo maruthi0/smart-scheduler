@@ -263,7 +263,7 @@ def test_templates_have_no_inline_scripts():
 
 def test_delete_prompt_cannot_run_a_crafted_name(coord_client, app):
     services.create_room("x');alert(1);//", 10, "lab")
-    page = coord_client.get("/coordinator/").get_data(as_text=True)
+    page = coord_client.get("/coordinator/rooms").get_data(as_text=True)
     assert "onclick" not in page
     assert 'data-confirm="Delete x&#39;);alert(1);//?"' in page
 

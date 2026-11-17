@@ -29,6 +29,9 @@ def test_logout(instructor_client):
 
 def test_instructor_cannot_access_coordinator_pages(instructor_client):
     assert instructor_client.get("/coordinator/").status_code == 403
+    assert instructor_client.get("/coordinator/rooms").status_code == 403
+    assert instructor_client.get("/coordinator/courses").status_code == 403
+    assert instructor_client.get("/coordinator/workload").status_code == 403
     assert instructor_client.post("/coordinator/rooms", data={}).status_code == 403
 
 
@@ -44,6 +47,57 @@ def test_instructor_cannot_set_course_or_instructor(instructor_client, catalog, 
 
 def test_coordinator_cannot_access_instructor_pages(coord_client):
     assert coord_client.get("/instructor/").status_code == 403
+
+
+def test_coordinator_password_management_has_own_page(coord_client, instructor):
+    dashboard = coord_client.get("/coordinator/")
+    assert b"Passwords" in dashboard.data
+    assert b"Reset password" not in dashboard.data
+    assert b"Reset a forgotten password" not in dashboard.data
+
+    passwords = coord_client.get("/coordinator/passwords")
+    assert passwords.status_code == 200
+    assert b"Account passwords" in passwords.data
+    assert b"Reset password" in passwords.data
+
+
+def test_instructor_cannot_access_password_management(instructor_client):
+    assert instructor_client.get("/coordinator/passwords").status_code == 403
+
+
+def test_coordinator_management_pages_are_separate(coord_client, catalog):
+    dashboard = coord_client.get("/coordinator/")
+    assert b"Generate a semester schedule" in dashboard.data
+    assert b"Room list" not in dashboard.data
+    assert b"Courses &amp; rules" in dashboard.data
+    assert b"Instructor workload" in dashboard.data
+
+    rooms = coord_client.get("/coordinator/rooms")
+    assert rooms.status_code == 200 and b"Hall A" in rooms.data
+    assert b"CS5551" not in rooms.data
+
+    courses = coord_client.get("/coordinator/courses")
+    assert courses.status_code == 200
+    assert b"CS5551" in courses.data and b"No-overlap rules" in courses.data
+
+    workload = coord_client.get("/coordinator/workload")
+    assert workload.status_code == 200 and b"Can work" in workload.data
+    assert b"CS5551" not in workload.data
+
+
+def test_management_actions_return_to_their_page(coord_client, catalog, instructor):
+    room_response = coord_client.post("/coordinator/rooms", data={
+        "name": "Hall C", "capacity": "40", "room_type": "lecture_hall"})
+    assert room_response.headers["Location"].endswith("/coordinator/rooms")
+
+    course_response = coord_client.post("/coordinator/courses", data={
+        "code": "CS5000", "title": "New Course", "enrollment": "25",
+        "lecture_hours": "2", "lab_hours": "0", "instructor_id": str(instructor.id)})
+    assert course_response.headers["Location"].endswith("/coordinator/courses")
+
+    workload_response = coord_client.post(
+        f"/coordinator/instructors/{instructor.id}/max-hours", data={"max_hours": "20"})
+    assert workload_response.headers["Location"].endswith("/coordinator/workload")
 
 
 def test_anonymous_redirected(client):
@@ -103,8 +157,8 @@ def test_coordinator_sets_hour_limit(coord_client, catalog, instructor):
 
 def test_coordinator_warned_when_changes_exceed_limit(coord_client, catalog, instructor):
     instructor.max_hours = 3  # smith is assigned exactly 3 hours
-    page = coord_client.get("/coordinator/")
-    assert b"Dr. Smith (0 h left)" in page.data
+    page = coord_client.get("/coordinator/workload")
+    assert b"Dr. Smith" in page.data and b"Hours left" in page.data
     resp = coord_client.post(f"/coordinator/courses/{catalog['se'].id}/hours",
                              data={"lecture_hours": "3", "lab_hours": "0"}, follow_redirects=True)
     assert b"Hours updated" in resp.data and b"over their limit by 1" in resp.data

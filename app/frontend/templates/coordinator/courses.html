@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Courses &amp; rules · Course Scheduler{% endblock %}
+{% block hero %}
+<div class="page-head">
+  <div>
+    <h1>Courses &amp; rules</h1>
+    <p>Set course teaching hours, assign instructors and define courses that must not overlap.</p>
+  </div>
+  <dl class="stats"><div><dt>Courses</dt><dd>{{ courses|length }}</dd></div></dl>
+</div>
+{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>Courses</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Code</th><th>Title</th><th class="num">Enrolled</th><th class="num">Lecture / lab hrs</th><th>Instructor</th><th>Preferences</th><th></th></tr></thead>
+      <tbody>
+      {% for course in courses %}
+        <tr>
+          <td class="mono"><strong>{{ course.code }}</strong></td>
+          <td>{{ course.title }}</td>
+          <td class="num">{{ course.enrollment }}</td>
+          <td class="num">
+            <form method="post" action="{{ url_for('coordinator.set_course_hours', course_id=course.id) }}" class="inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input name="lecture_hours" type="number" min="0" max="10" required value="{{ course.lecture_hours }}" aria-label="{{ course.code }} lecture hours">
+              <input name="lab_hours" type="number" min="0" max="10" required value="{{ course.lab_hours }}" aria-label="{{ course.code }} lab hours">
+              <button class="link">Save</button>
+            </form>
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('coordinator.assign_instructor', course_id=course.id) }}" class="inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="instructor_id" data-autosubmit>
+                <option value="">— unassigned —</option>
+                {% for instructor in instructors %}<option value="{{ instructor.id }}" {% if course.instructor_id == instructor.id %}selected{% endif %}>{{ instructor.display_name }} ({{ instructor.hours_left }} h left)</option>{% endfor %}
+              </select>
+              <noscript><button class="link">Save</button></noscript>
+            </form>
+          </td>
+          <td>
+            {% if course.preference %}
+              <span class="badge published" title="{{ course.preference.midterms }} midterm(s), final exam: {{ 'yes' if course.preference.final_exam else 'no' }}">submitted</span>
+            {% else %}<span class="badge draft">none</span>{% endif %}
+          </td>
+          <td class="actions-cell">
+            <form method="post" action="{{ url_for('coordinator.delete_course', course_id=course.id) }}" class="inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="link danger" data-confirm="Delete {{ course.code }}?">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="muted">No courses yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form method="post" action="{{ url_for('coordinator.add_course') }}" class="row-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Code <input name="code" required size="8"></label>
+    <label>Title <input name="title" required></label>
+    <label>Enrolled <input name="enrollment" type="number" min="1" required></label>
+    <label>Lecture hrs <input name="lecture_hours" type="number" min="0" max="10" value="3"></label>
+    <label>Lab hrs <input name="lab_hours" type="number" min="0" max="10" value="0"></label>
+    <label>Instructor
+      <select name="instructor_id">
+        <option value="">—</option>
+        {% for instructor in instructors %}<option value="{{ instructor.id }}">{{ instructor.display_name }} ({{ instructor.hours_left }} h left)</option>{% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="button">Add course</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>No-overlap rules <small class="muted">(hard constraint)</small></h2>
+  <p class="muted">Courses that must never be scheduled at the same time, for example core courses taken by the same cohort.</p>
+  <ul class="plain">
+    {% for rule in rules %}
+      <li>
+        {{ rule.course_a.code }} ✕ {{ rule.course_b.code }}
+        <form method="post" action="{{ url_for('coordinator.delete_rule', rule_id=rule.id) }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="link danger">Remove</button>
+        </form>
+      </li>
+    {% else %}
+      <li class="muted">No rules yet.</li>
+    {% endfor %}
+  </ul>
+  {% if courses|length > 1 %}
+    <form method="post" action="{{ url_for('coordinator.add_rule') }}" class="row-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label>Course <select name="course_a_id">{% for course in courses %}<option value="{{ course.id }}">{{ course.code }}</option>{% endfor %}</select></label>
+      <label>Must not overlap <select name="course_b_id">{% for course in courses %}<option value="{{ course.id }}" {% if loop.index == 2 %}selected{% endif %}>{{ course.code }}</option>{% endfor %}</select></label>
+      <button type="submit" class="button">Add rule</button>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

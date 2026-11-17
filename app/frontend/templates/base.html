@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Plan rooms, courses and teaching hours, and publish the semester timetable.">
   <title>{% block title %}Course Scheduler{% endblock %}</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23131a25'/%3E%3Crect x='7' y='8' width='8' height='7' rx='2' fill='%23ffffff'/%3E%3Crect x='17' y='8' width='8' height='7' rx='2' fill='%2367809f'/%3E%3Crect x='7' y='17' width='8' height='7' rx='2' fill='%2367809f'/%3E%3Crect x='17' y='17' width='8' height='7' rx='2' fill='%23ffffff'/%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%231b3d68'/%3E%3Crect x='7' y='8' width='8' height='7' rx='2' fill='%23ffffff'/%3E%3Crect x='17' y='8' width='8' height='7' rx='2' fill='%23b9cee8'/%3E%3Crect x='7' y='17' width='8' height='7' rx='2' fill='%23b9cee8'/%3E%3Crect x='17' y='17' width='8' height='7' rx='2' fill='%23ffffff'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap">
@@ -25,7 +25,11 @@
         <nav class="nav" aria-label="Main">
           {% if g.user.is_coordinator %}
             <a href="{{ url_for('coordinator.dashboard') }}" {% if ep in ('coordinator.dashboard', 'coordinator.view_schedule') %}aria-current="page"{% endif %}>Dashboard</a>
+            <a href="{{ url_for('coordinator.rooms') }}" {% if ep == 'coordinator.rooms' %}aria-current="page"{% endif %}>Rooms</a>
+            <a href="{{ url_for('coordinator.courses') }}" {% if ep == 'coordinator.courses' %}aria-current="page"{% endif %}>Courses &amp; rules</a>
+            <a href="{{ url_for('coordinator.workload') }}" {% if ep == 'coordinator.workload' %}aria-current="page"{% endif %}>Instructor workload</a>
             <a href="{{ url_for('coordinator.requests') }}" {% if ep == 'coordinator.requests' %}aria-current="page"{% endif %}>Change requests</a>
+            <a href="{{ url_for('coordinator.passwords') }}" {% if ep in ('coordinator.passwords', 'coordinator.reset_password') %}aria-current="page"{% endif %}>Passwords</a>
           {% else %}
             <a href="{{ url_for('instructor.dashboard') }}" {% if ep in ('instructor.dashboard', 'instructor.preferences') %}aria-current="page"{% endif %}>My courses</a>
             <a href="{{ url_for('instructor.schedule') }}" {% if ep == 'instructor.schedule' %}aria-current="page"{% endif %}>Timetable</a>
@@ -35,7 +39,7 @@
         <div class="account">
           {% set words = g.user.display_name.replace('Dr.', '').replace('(', '').replace(')', '').split() %}
           <span class="who"><span class="avatar" aria-hidden="true">{% for w in words[:2] %}{{ w[0]|upper }}{% endfor %}</span>{{ g.user.display_name }}<span class="badge role">{{ g.user.role }}</span></span>
-          <a href="{{ url_for('auth.change_password') }}" {% if ep == 'auth.change_password' %}aria-current="page"{% endif %}>Password</a>
+          <a href="{{ url_for('auth.change_password') }}" {% if ep == 'auth.change_password' %}aria-current="page"{% endif %}>Change password</a>
           <form method="post" action="{{ url_for('auth.logout') }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="link">Log out</button>
           </form>

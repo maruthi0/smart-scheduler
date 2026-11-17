@@ -2,7 +2,7 @@
    Deep-ink header band carrying the page title, white layered panels that overlap it,
    one accent, one typeface. The band's motif is the 50-slot teaching week itself. */
 :root {
-  --ground: #e9edf2;
+  --ground: #eef3f8;
   --surface: #ffffff;
   --surface-2: #f3f5f8;
   --surface-3: #e5e9ef;
@@ -11,12 +11,12 @@
   --muted: #667185;
   --rule: #e8ebf0;
 
-  --night: #0d1424;
-  --night-2: #162038;
-  --accent: #2a5ea8;
-  --accent-hover: #224f8f;
-  --accent-tint: #e7effa;
-  --glow: #4f86d6;
+  --night: #173b69;
+  --night-2: #204b7d;
+  --accent: #23508a;
+  --accent-hover: #1b3d68;
+  --accent-tint: #e7eff8;
+  --glow: #6b9ada;
 
   --ok: #1f6a40;      --ok-bg: #e0f2e7;
   --warn: #8a5207;    --warn-bg: #fcefd6;
@@ -85,7 +85,7 @@ a:hover { color: var(--accent-hover); }
   position: relative; overflow: hidden; color: #fff;
   background:
     radial-gradient(55% 140% at 88% 40%, rgba(79, 134, 214, .30), transparent 62%),
-    radial-gradient(40% 120% at 4% 120%, rgba(42, 94, 168, .30), transparent 60%),
+    radial-gradient(40% 120% at 4% 120%, rgba(35, 80, 138, .30), transparent 60%),
     linear-gradient(180deg, var(--night) 0%, var(--night-2) 100%);
 }
 .hero::before { content: ""; position: absolute; inset: 0; background-image: var(--grain); opacity: .12; mix-blend-mode: soft-light; pointer-events: none; }
@@ -159,7 +159,7 @@ input, textarea, select {
 input:not([type=checkbox]):not([type=radio]), select { height: 44px; }
 input::placeholder, textarea::placeholder { color: #9aa3b2; }
 input:hover, textarea:hover, select:hover { background: #edf0f4; }
-input:focus, textarea:focus, select:focus { outline: none; background: var(--surface); border-color: var(--accent); box-shadow: 0 0 0 4px rgba(42, 94, 168, .14); }
+input:focus, textarea:focus, select:focus { outline: none; background: var(--surface); border-color: var(--accent); box-shadow: 0 0 0 4px rgba(35, 80, 138, .14); }
 textarea { resize: vertical; }
 .row-form { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; margin-top: 20px; }
 .row-form label { margin-bottom: 0; flex: 1 1 140px; }
@@ -180,10 +180,10 @@ form.inline input[type=number] { width: 58px; height: 34px; }
   height: 44px; padding: 0 22px; border: 0; border-radius: 999px;
   background: var(--accent); color: #fff; font: 500 .93rem/1 var(--font); letter-spacing: -.005em;
   text-decoration: none; cursor: pointer;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), 0 10px 24px -12px rgba(42, 94, 168, .9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), 0 10px 24px -12px rgba(35, 80, 138, .9);
   transition: background-color .3s var(--spring), transform .3s var(--spring), box-shadow .3s var(--spring);
 }
-.button:hover { background: var(--accent-hover); color: #fff; transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), 0 14px 28px -12px rgba(42, 94, 168, 1); }
+.button:hover { background: var(--accent-hover); color: #fff; transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), 0 14px 28px -12px rgba(35, 80, 138, 1); }
 .button:active { transform: translateY(0) scale(.97); transition-duration: .12s; }
 .button.secondary { background: var(--surface-3); color: var(--ink); box-shadow: none; }
 .button.secondary:hover { background: #dbe0e7; color: var(--ink); box-shadow: none; }
@@ -248,7 +248,7 @@ ul.plain li.muted { background: none; padding-left: 0; }
 .session.lab { background: #edf0f4; box-shadow: inset 3px 0 0 #59647a; }
 .session.warn { background: var(--warn-bg); box-shadow: inset 3px 0 0 #c4862a; }
 .has-mine .session:not(.mine) { opacity: .4; }
-.session.mine { box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 1px rgba(42, 94, 168, .45); }
+.session.mine { box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 1px rgba(35, 80, 138, .45); }
 .mark { display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 4px; border-radius: 4px; background: #c4862a; color: #fff; font: 700 .66rem/1 var(--font); vertical-align: 1px; }
 
 .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; margin: 18px 0 0; font-size: .84rem; }
@@ -264,7 +264,7 @@ ul.plain li.muted { background: none; padding-left: 0; }
 body.auth-body {
   background:
     radial-gradient(50% 60% at 85% 10%, rgba(79, 134, 214, .30), transparent 65%),
-    radial-gradient(45% 55% at 0% 100%, rgba(42, 94, 168, .28), transparent 60%),
+    radial-gradient(45% 55% at 0% 100%, rgba(35, 80, 138, .28), transparent 60%),
     linear-gradient(180deg, var(--night) 0%, #111b31 100%);
   background-attachment: fixed; min-height: 100dvh;
 }

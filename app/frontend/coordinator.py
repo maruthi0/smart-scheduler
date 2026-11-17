@@ -29,8 +29,8 @@ def _run(action, success_message):
     return result if result is not None else True
 
 
-def _back():
-    return redirect(url_for("coordinator.dashboard"))
+def _back(page="dashboard"):
+    return redirect(url_for(f"coordinator.{page}"))
 
 
 def _warn_if_over_limit(course):
@@ -45,17 +45,39 @@ def _warn_if_over_limit(course):
 def dashboard():
     return render_template(
         "coordinator/dashboard.html",
-        rooms=Room.query.order_by(Room.name).all(),
-        courses=Course.query.order_by(Course.code).all(),
-        instructors=services.instructors(),
-        workloads=services.workloads(),
-        accounts=services.accounts(),
-        rules=NoOverlap.query.all(),
         schedules=Schedule.query.order_by(Schedule.created_at.desc()).all(),
         pending=ChangeRequest.query.filter_by(status=PENDING).count(),
-        room_types=ROOM_TYPES,
         today=date.today(),
     )
+
+
+@bp.get("/rooms")
+def rooms():
+    return render_template(
+        "coordinator/rooms.html",
+        rooms=Room.query.order_by(Room.name).all(),
+        room_types=ROOM_TYPES,
+    )
+
+
+@bp.get("/courses")
+def courses():
+    return render_template(
+        "coordinator/courses.html",
+        courses=Course.query.order_by(Course.code).all(),
+        instructors=services.instructors(),
+        rules=NoOverlap.query.all(),
+    )
+
+
+@bp.get("/workload")
+def workload():
+    return render_template("coordinator/workload.html", workloads=services.workloads())
+
+
+@bp.get("/passwords")
+def passwords():
+    return render_template("coordinator/passwords.html", accounts=services.accounts())
 
 
 # --- Rooms -----------------------------------------------------------------
@@ -65,13 +87,13 @@ def add_room():
     f = request.form
     _run(lambda: services.create_room(f.get("name"), f.get("capacity"), f.get("room_type")),
          "Room added.")
-    return _back()
+    return _back("rooms")
 
 
 @bp.post("/rooms/<int:room_id>/delete")
 def delete_room(room_id):
     _run(lambda: services.delete_room(room_id), "Room deleted.")
-    return _back()
+    return _back("rooms")
 
 
 # --- Courses ---------------------------------------------------------------
@@ -82,7 +104,7 @@ def add_course():
     _warn_if_over_limit(_run(lambda: services.create_course(
         f.get("code"), f.get("title"), f.get("enrollment"), f.get("lecture_hours"),
         f.get("lab_hours"), f.get("instructor_id")), "Course added."))
-    return _back()
+    return _back("courses")
 
 
 @bp.post("/courses/<int:course_id>/instructor")
@@ -90,7 +112,7 @@ def assign_instructor(course_id):
     _warn_if_over_limit(_run(
         lambda: services.assign_instructor(course_id, request.form.get("instructor_id")),
         "Instructor updated."))
-    return _back()
+    return _back("courses")
 
 
 @bp.post("/courses/<int:course_id>/hours")
@@ -99,20 +121,20 @@ def set_course_hours(course_id):
     _warn_if_over_limit(_run(
         lambda: services.set_course_hours(course_id, f.get("lecture_hours"), f.get("lab_hours")),
         "Hours updated."))
-    return _back()
+    return _back("courses")
 
 
 @bp.post("/courses/<int:course_id>/delete")
 def delete_course(course_id):
     _run(lambda: services.delete_course(course_id), "Course deleted.")
-    return _back()
+    return _back("courses")
 
 
 @bp.post("/instructors/<int:user_id>/max-hours")
 def set_max_hours(user_id):
     _run(lambda: services.set_max_hours(user_id, request.form.get("max_hours")),
          "Hour limit updated.")
-    return _back()
+    return _back("workload")
 
 
 @bp.post("/accounts/<int:user_id>/reset-password")
@@ -121,7 +143,7 @@ def reset_password(user_id):
         account, temporary = services.reset_password(g.user, user_id)
     except ValidationError as e:
         flash(str(e), "error")
-        return _back()
+        return redirect(url_for("coordinator.passwords"))
     # Shown on this page only: a flash message would store it in the session cookie.
     return render_template("coordinator/temp_password.html", account=account, temporary=temporary)
 
@@ -133,13 +155,13 @@ def add_rule():
     f = request.form
     _run(lambda: services.add_no_overlap(f.get("course_a_id"), f.get("course_b_id")),
          "No-overlap rule added.")
-    return _back()
+    return _back("courses")
 
 
 @bp.post("/rules/<int:rule_id>/delete")
 def delete_rule(rule_id):
     _run(lambda: services.delete_no_overlap(rule_id), "Rule removed.")
-    return _back()
+    return _back("courses")
 
 
 # --- Schedules -------------------------------------------------------------
