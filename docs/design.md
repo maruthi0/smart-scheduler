@@ -16,7 +16,7 @@ flowchart TB
     subgraph Frontend["app/frontend (Flask blueprints + Jinja templates + CSS)"]
         AUTH["auth.py<br/>login · roles"]
         COORD["coordinator.py<br/>rooms · courses · rules · schedules · requests"]
-        INST["instructor.py<br/>preferences · timetable · requests · .ics"]
+        INST["instructor.py<br/>preferences · timetable · requests · .ics export"]
     end
     subgraph Backend["app/backend (business logic + data)"]
         SVC["services.py<br/>validation · permissions · persistence"]
@@ -302,7 +302,7 @@ This is a greedy best-first search with backtracking. It **guarantees** that eve
 | Level | File | What / technique |
 |---|---|---|
 | Unit (algorithm) | `tests/test_scheduler.py` | Every hard and soft constraint; boundary values (enrollment = capacity vs. capacity + 1, 50 sessions in 50 slots); infeasible inputs |
-| Unit (services) | `tests/test_services.py` | Validation (equivalence partitions), permissions, persistence, publishing, change requests, .ics content |
+| Unit (services) | `tests/test_services.py` | Validation (equivalence partitions), permissions, persistence, publishing, change requests and .ics content |
 | Integration | `tests/test_routes.py` | Flask test client covering HTTP → service → DB, role access (403/302), what the user sees |
 | Smoke | `tests/test_seed.py` | The demo data always produces a valid schedule |
 | Security | `tests/test_security.py` | Missing secrets stop start-up, settings come from the environment, CSRF rejects forms without a token |

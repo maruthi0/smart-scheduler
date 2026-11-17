@@ -1,4 +1,7 @@
 """Integration tests through the Flask test client (HTTP -> service -> DB)."""
+import io
+
+from app.backend import services
 from app.backend.models import DEFAULT_MAX_HOURS, ChangeRequest, Course, Room, Schedule, User
 from tests.conftest import login
 
@@ -116,6 +119,34 @@ def test_coordinator_manages_rooms(coord_client):
     assert b"Capacity must be between" in resp.data
     room = Room.query.one()
     coord_client.post(f"/coordinator/rooms/{room.id}/delete")
+    assert Room.query.count() == 0
+
+
+def test_coordinator_imports_rooms_from_csv(coord_client):
+    response = coord_client.post("/coordinator/import", data={
+        "import_type": "rooms",
+        "file": (io.BytesIO(b"name,capacity,room_type\nHall CSV,80,lecture_hall\n"),
+                 "rooms.csv"),
+    }, content_type="multipart/form-data", follow_redirects=True)
+
+    assert response.status_code == 200
+    assert b"Imported 1 rooms" in response.data
+    assert Room.query.filter_by(name="Hall CSV").one().capacity == 80
+
+
+def test_instructor_cannot_import_csv(instructor_client):
+    response = instructor_client.get("/coordinator/import")
+
+    assert response.status_code == 403
+
+
+def test_coordinator_import_rejects_missing_csv_columns(coord_client):
+    response = coord_client.post("/coordinator/import", data={
+        "import_type": "rooms",
+        "file": (io.BytesIO(b"name,capacity\nHall CSV,80\n"), "rooms.csv"),
+    }, content_type="multipart/form-data", follow_redirects=True)
+
+    assert b"room_type" in response.data
     assert Room.query.count() == 0
 
 
@@ -245,6 +276,13 @@ def test_delete_draft_schedule(coord_client, catalog):
     assert b"Schedule deleted" in resp.data
 
 
+def test_published_schedule_cannot_be_deleted(coord_client, published):
+    resp = coord_client.post(f"/coordinator/schedules/{published.id}/delete",
+                             follow_redirects=True)
+    assert b"published schedule cannot be deleted" in resp.data
+    assert Schedule.query.filter_by(id=published.id).one().status == "published"
+
+
 def test_missing_schedule_404(coord_client):
     assert coord_client.get("/coordinator/schedules/999").status_code == 404
 
@@ -260,6 +298,18 @@ def test_coordinator_responds_to_request(client, published, catalog, coordinator
                        data={"decision": "reject", "response": "Room unavailable"},
                        follow_redirects=True)
     assert b"Request rejected" in resp.data and b"Room unavailable" in resp.data
+
+
+def test_instructor_cannot_request_change_to_others_session(instructor_client, published,
+                                                            catalog):
+    other_session = next(session for session in published.sessions
+                         if session.course_id == catalog["ml"].id)
+    resp = instructor_client.post("/instructor/requests", data={
+        "session_id": other_session.id, "message": "Move this session"},
+        follow_redirects=True)
+    assert resp.status_code == 403
+    assert b"only request changes to your own sessions" in resp.data
+    assert ChangeRequest.query.count() == 0
 
 
 # --- Instructor ------------------------------------------------------------
@@ -318,8 +368,6 @@ def test_instructor_downloads_calendar(instructor_client, published):
     assert resp.mimetype == "text/calendar"
     assert "attachment" in resp.headers["Content-Disposition"]
     assert b"BEGIN:VEVENT" in resp.data
-
-
 def test_error_pages_are_rendered(coord_client):
     resp = coord_client.get("/coordinator/schedules/999")
     assert resp.status_code == 404 and b"Error 404" in resp.data

@@ -121,6 +121,17 @@ def test_unknown_username_is_throttled_the_same_way(client, app):
     assert _bad_login(client, "nobody").status_code == 429
 
 
+def test_malicious_username_cannot_bypass_login(client, instructor):
+    response = client.post("/login", data={
+        "username": "' OR 1=1 --",
+        "password": "secret123",
+    })
+
+    assert response.status_code == 200
+    assert b"Invalid username or password" in response.data
+    assert client.get("/instructor/").status_code == 302
+
+
 def test_old_failed_logins_are_removed(client, app):
     old = datetime.now() - services.LOGIN_LOCKOUT - timedelta(minutes=1)
     db.session.add(LoginAttempt(username="stale", failures=1, last_failure=old))

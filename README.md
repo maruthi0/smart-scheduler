@@ -27,6 +27,9 @@ There is no public registration: only pre-assigned instructors and coordinators 
 
 ```powershell
 flask --app run load-accounts     # run after seed, and again whenever the file changes
+flask --app run import-instructors instructors.csv
+flask --app run import-rooms rooms.csv
+flask --app run import-courses courses.csv
 ```
 
 The command adds or updates every listed account. New accounts get the file's password, and everyone must choose their own password at first login. Existing accounts keep the password they chose, unless you add `--reset-passwords`, which puts everyone back on the file's passwords. Any account not in the file is locked: it can no longer log in and its open sessions end, but its courses and history are kept. Adding it back to the file and re-running restores it.
@@ -38,6 +41,13 @@ Five failed logins for a username block it for 15 minutes, and sessions end afte
 To load accounts into a hosted database such as Render's, set `DATABASE_URL` to its external URL in your shell and run the same command on your own machine, because the file is not deployed.
 
 To reset the data, drop and recreate the database (PostgreSQL) or delete `instance/scheduler.db` (SQLite).
+
+CSV imports add or update records. Instructor CSV files require
+`username,password,full_name,max_hours`; room files require
+`name,capacity,room_type`; course files require
+`code,title,enrollment,lecture_hours,lab_hours,instructor_username`.
+Course instructor usernames must already exist as instructors. Empty
+`instructor_username` values leave a course unassigned.
 
 ## Test
 

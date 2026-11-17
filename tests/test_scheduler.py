@@ -95,6 +95,12 @@ def test_labs_go_to_lab_rooms():
     assert rooms == {"lab": LAB, "lecture": HALL}
 
 
+def test_lecture_in_lab_room_is_rejected():
+    reasons = Timetable().hard_violations(lecture(1), LAB, 0, 8)
+
+    assert reasons == ["Lectures cannot be held in a lab room"]
+
+
 def test_room_never_double_booked():
     # 1 room, 50 weekly slots, 50 sessions -> every slot used exactly once
     sessions = [lecture(c) for c in range(50)]
@@ -125,6 +131,20 @@ def test_no_overlap_rule_is_respected():
     assert hard_ok(result, rule)
 
 
+def test_no_overlap_group_is_respected():
+    rules = {
+        frozenset((1, 2)),
+        frozenset((1, 3)),
+        frozenset((2, 3)),
+    }
+    sessions = [lecture(course_id) for course_id in (1, 2, 3)]
+
+    result = generate(Problem([HALL, SMALL, THEATER], sessions, rules))
+
+    assert len({(p.day, p.hour) for p in result.placements}) == 3
+    assert hard_ok(result, rules)
+
+
 def test_no_suitable_room_raises_clear_error():
     with pytest.raises(SchedulingError, match="at least 500 seats"):
         generate(Problem([HALL], [lecture(1, enrollment=500)]))
@@ -136,6 +156,13 @@ def test_overloaded_instructor_fails_fast():
     # One instructor, 51 sessions, only 50 weekly slots.
     sessions = [lecture(c, instructor=1) for c in range(51)]
     with pytest.raises(SchedulingError, match="51 weekly sessions"):
+        generate(Problem([HALL, SMALL], sessions))
+
+
+def test_too_many_sessions_for_one_course_fails_fast():
+    sessions = [lecture(1, i) for i in range(51)]
+
+    with pytest.raises(SchedulingError, match="only has 50 time slots"):
         generate(Problem([HALL, SMALL], sessions))
 
 

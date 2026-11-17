@@ -1,4 +1,6 @@
 """Coordinator pages: rooms, courses, constraints, schedule generation and editing."""
+import csv
+import io
 from datetime import date
 
 from flask import Blueprint, flash, g, redirect, render_template, request, url_for
@@ -78,6 +80,48 @@ def workload():
 @bp.get("/passwords")
 def passwords():
     return render_template("coordinator/passwords.html", accounts=services.accounts())
+
+
+# --- CSV imports -----------------------------------------------------------
+
+@bp.route("/import", methods=["GET", "POST"])
+def import_csv():
+    if request.method == "POST":
+        upload = request.files.get("file")
+        import_type = request.form.get("import_type")
+        required = {
+            "instructors": ("username", "password", "full_name", "max_hours"),
+            "rooms": ("name", "capacity", "room_type"),
+            "courses": ("code", "title", "enrollment", "lecture_hours",
+                        "lab_hours", "instructor_username"),
+        }.get(import_type)
+        if upload is None or not upload.filename:
+            flash("Choose a CSV file to import.", "error")
+        elif required is None:
+            flash("Choose what the CSV file contains.", "error")
+        else:
+            try:
+                text = upload.stream.read().decode("utf-8-sig")
+                reader = csv.DictReader(io.StringIO(text))
+                missing = [column for column in required
+                           if column not in (reader.fieldnames or [])]
+                if missing:
+                    raise ValidationError(
+                        f"CSV is missing required column(s): {', '.join(missing)}.")
+                rows = list(reader)
+                importer = {
+                    "instructors": services.import_instructors,
+                    "rooms": services.import_rooms,
+                    "courses": services.import_courses,
+                }[import_type]
+                imported = importer(rows)
+            except UnicodeDecodeError:
+                flash("CSV files must use UTF-8 encoding.", "error")
+            except ValidationError as e:
+                flash(str(e), "error")
+            else:
+                flash(f"Imported {len(imported)} {import_type}.", "success")
+    return redirect(url_for("coordinator.dashboard"))
 
 
 # --- Rooms -----------------------------------------------------------------

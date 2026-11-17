@@ -198,6 +198,100 @@ def sync_accounts(rows, reset_passwords=False):
     return [user.username for user in locked]
 
 
+def import_instructors(rows):
+    rows = list(rows)
+    if not rows:
+        raise ValidationError("The instructors file lists no instructors.")
+    usernames = set()
+    users = []
+    for row in rows:
+        username = _valid_account(row.get("username"), row.get("password"), INSTRUCTOR)
+        if username in usernames:
+            raise ValidationError(f"Username {username} appears more than once.")
+        usernames.add(username)
+        full_name = _text(row.get("full_name"), "Full name", 120, required=False)
+        max_hours = _int(row.get("max_hours") or DEFAULT_MAX_HOURS,
+                         "Hour limit", 0, 60)
+        user = User.query.filter_by(username=username).first()
+        if user is not None and user.role != INSTRUCTOR:
+            raise ValidationError(f"{username} is not an instructor.")
+        users.append((user, username, row.get("password"), full_name, max_hours))
+    for user, username, password, full_name, max_hours in users:
+        if user is None:
+            user = User(username=username, role=INSTRUCTOR)
+            db.session.add(user)
+        user.full_name = full_name
+        user.max_hours = max_hours
+        user.set_password(password)
+        user.must_change_password = True
+    db.session.commit()
+    return [User.query.filter_by(username=username).one() for _, username, *_ in users]
+
+
+def import_rooms(rows):
+    rows = list(rows)
+    if not rows:
+        raise ValidationError("The rooms file lists no rooms.")
+    names = set()
+    rooms = []
+    for row in rows:
+        name = _text(row.get("name"), "Room name", 60)
+        if name in names:
+            raise ValidationError(f"Room {name} appears more than once.")
+        names.add(name)
+        capacity = _int(row.get("capacity"), "Capacity", 1, 2000)
+        room_type = row.get("room_type")
+        if room_type not in ROOM_TYPES:
+            raise ValidationError("Choose a valid room type.")
+        room = Room.query.filter_by(name=name).first()
+        rooms.append((room, name, capacity, room_type))
+    for room, name, capacity, room_type in rooms:
+        if room is None:
+            room = Room(name=name, capacity=capacity, room_type=room_type)
+            db.session.add(room)
+        else:
+            room.capacity = capacity
+            room.room_type = room_type
+    db.session.commit()
+    return [Room.query.filter_by(name=name).one() for _, name, *_ in rooms]
+
+
+def import_courses(rows):
+    rows = list(rows)
+    if not rows:
+        raise ValidationError("The courses file lists no courses.")
+    codes = set()
+    courses = []
+    for row in rows:
+        code = _text(row.get("code"), "Course code", 20).upper()
+        if code in codes:
+            raise ValidationError(f"Course {code} appears more than once.")
+        codes.add(code)
+        title = _text(row.get("title"), "Course title", 120)
+        enrollment = _int(row.get("enrollment"), "Enrollment", 1, 2000)
+        lecture_hours, lab_hours = _hours(row.get("lecture_hours") or 0,
+                                          row.get("lab_hours") or 0)
+        username = (row.get("instructor_username") or "").strip()
+        instructor = None
+        if username:
+            instructor = User.query.filter_by(username=username).first()
+            if instructor is None or instructor.role != INSTRUCTOR:
+                raise ValidationError(f"{username} is not an instructor.")
+        course = Course.query.filter_by(code=code).first()
+        courses.append((course, code, title, enrollment, lecture_hours, lab_hours, instructor))
+    for course, code, title, enrollment, lecture_hours, lab_hours, instructor in courses:
+        if course is None:
+            course = Course(code=code)
+            db.session.add(course)
+        course.title = title
+        course.enrollment = enrollment
+        course.lecture_hours = lecture_hours
+        course.lab_hours = lab_hours
+        course.instructor = instructor
+    db.session.commit()
+    return [Course.query.filter_by(code=code).one() for _, code, *_ in courses]
+
+
 def instructors():
     return User.query.filter_by(role=INSTRUCTOR).order_by(User.full_name, User.username).all()
 
