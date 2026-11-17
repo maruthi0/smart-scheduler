@@ -47,7 +47,9 @@ CSV imports add or update records. Instructor CSV files require
 `name,capacity,room_type`; course files require
 `code,title,enrollment,lecture_hours,lab_hours,instructor_username`.
 Course instructor usernames must already exist as instructors. Empty
-`instructor_username` values leave a course unassigned.
+`instructor_username` values leave a course unassigned. The file's password is
+used only for new instructors: existing ones keep their own password, and locked
+accounts stay locked.
 
 ## Test
 

@@ -193,6 +193,18 @@ def test_import_instructors_adds_and_updates_rows(app, tmp_path):
     assert services.authenticate("newsmith", "new-pass-1") == user
 
 
+def test_import_instructors_keeps_existing_password_and_lock(app, instructor, other_instructor):
+    services.sync_accounts([ACCOUNTS[0]])  # smith listed, jones locked
+    services.import_instructors([
+        {"username": "smith", "password": "file-pass-1", "full_name": "Dr. Smith", "max_hours": "9"},
+        {"username": "jones", "password": "file-pass-2", "full_name": "", "max_hours": ""},
+    ])
+    assert services.authenticate("smith", "secret123") == instructor
+    assert not instructor.must_change_password and instructor.max_hours == 9
+    assert other_instructor.is_locked
+    assert services.authenticate("jones", "file-pass-2") is None
+
+
 def test_import_rooms_and_courses_resolve_instructor(app, instructor, tmp_path):
     rooms = tmp_path / "rooms.csv"
     rooms.write_text("name,capacity,room_type\nHall C,80,lecture_hall\n", encoding="utf-8")

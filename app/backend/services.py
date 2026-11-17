@@ -6,7 +6,7 @@ from datetime import date, datetime, time, timedelta, timezone
 
 from . import scheduler
 from .models import (
-    ACCEPTED, ARCHIVED, DRAFT, INSTRUCTOR, LOCKED_HASH, PENDING, PERIODS, PUBLISHED, REJECTED,
+    ACCEPTED, ARCHIVED, DEFAULT_MAX_HOURS, DRAFT, INSTRUCTOR, LOCKED_HASH, PENDING, PERIODS, PUBLISHED, REJECTED,
     ROLES, ROOM_TYPES, ChangeRequest, Course, CoursePreference, LoginAttempt, NoOverlap, Room,
     Schedule, ScheduledSession, Unavailability, User, db,
 )
@@ -217,13 +217,13 @@ def import_instructors(rows):
             raise ValidationError(f"{username} is not an instructor.")
         users.append((user, username, row.get("password"), full_name, max_hours))
     for user, username, password, full_name, max_hours in users:
-        if user is None:
+        if user is None:  # existing accounts keep their own password and lock, as in load-accounts
             user = User(username=username, role=INSTRUCTOR)
+            user.set_password(password)
+            user.must_change_password = True
             db.session.add(user)
         user.full_name = full_name
         user.max_hours = max_hours
-        user.set_password(password)
-        user.must_change_password = True
     db.session.commit()
     return [User.query.filter_by(username=username).one() for _, username, *_ in users]
 
